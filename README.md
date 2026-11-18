@@ -1,4 +1,4 @@
-# Pixel Backup Gang
+# Pixel Backup
 
 This pilot shares a Windows photo folder with a rooted 2016 Google Pixel or Pixel XL. It keeps the originals on the PC and gives the Pixel a read-only SMB mount at `/storage/emulated/0/PixelBackup`. Android indexes the folder, and Google Photos on the phone can back up its eligible items.
 
