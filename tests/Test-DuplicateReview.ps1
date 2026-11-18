@@ -442,7 +442,8 @@ internal static class PixelBackupRegression
     [IO.File]::WriteAllText($harness, $cases, [Text.UTF8Encoding]::new($false))
     $framework = if ([Environment]::Is64BitProcess) { 'Framework64' } else { 'Framework' }
     $compiler = Join-Path $env:WINDIR "Microsoft.NET\$framework\v4.0.30319\csc.exe"
-    $sources = @('MediaScan.cs', 'BackupLibrary.cs', 'PlanSession.cs', 'DesktopPlatform.cs') |
+    $sources = @('MediaScan.cs', 'BackupLibrary.cs', 'PlanSession.cs', 'DesktopPlatform.cs',
+        'DesktopFolderPicker.cs', 'AndroidTools.cs') |
         ForEach-Object { Join-Path $app $_ }
     $runner = Join-Path $testRoot 'PixelBackupRegression.exe'
     $wpf = Join-Path (Split-Path -Parent $compiler) 'WPF'

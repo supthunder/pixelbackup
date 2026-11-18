@@ -23,15 +23,35 @@ jobs:
 
       - name: Build the app and load its packaged window
         run: |
-          $exe = .\windows\Build-PixelBackup.ps1 -Destination .\dist\app -PackagePath .\dist\Pixel-Backup-Windows-x64.zip
-          Add-Type -AssemblyName PresentationFramework
+          $zip = Join-Path $PWD 'dist\Pixel-Backup-Windows-x64.zip'
+          $null = .\windows\Build-PixelBackup.ps1 -Destination .\dist\app -PackagePath $zip
+          $expected = ((Get-Content -LiteralPath "$zip.sha256" -Raw).Trim() -split '\s+')[0]
+          if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne $expected) { throw 'Portable ZIP checksum mismatch.' }
+          Add-Type -AssemblyName PresentationFramework,System.IO.Compression.FileSystem
+          $unpacked = Join-Path $env:RUNNER_TEMP ('PixelBackup-package-' + [guid]::NewGuid().ToString('N'))
+          [IO.Compression.ZipFile]::ExtractToDirectory($zip, $unpacked)
+          $exe = Join-Path $unpacked 'Pixel Backup.exe'
           $assembly = [Reflection.Assembly]::LoadFrom($exe)
           $window = $assembly.GetType('PixelBackup.Program').GetMethod('LoadWindow').Invoke($null, @())
-          if (-not $window.Icon -or -not $window.Content) { throw 'The installed desktop window is missing its icon or content.' }
-          $window.Close()
+          try {
+              if (-not $window.Icon -or $window.Icon.PixelWidth -lt 64 -or -not $window.Content) {
+                  throw 'The packaged window is missing its high-resolution icon or content.'
+              }
+              foreach ($name in @('WelcomeView', 'ReviewView', 'ChooseFolder', 'ChangeFolder', 'PairPhone', 'GetUsbTools')) {
+                  if (-not $window.FindName($name)) { throw "The packaged window is missing the $name control." }
+              }
+              $art = $window.FindName('WelcomeArt').Source
+              if (-not $art -or -not $art.IsFrozen -or $art.PixelWidth -le 0) { throw 'The packaged welcome photo did not load.' }
+              if ($window.FindName('WelcomeView').Visibility -ne 'Visible' -or $window.FindName('ReviewView').Visibility -ne 'Collapsed') {
+                  throw 'The packaged window did not open on the welcome screen.'
+              }
+          } finally { $window.Close() }
 
       - name: Test duplicate review and Takeout imports
         run: .\tests\Test-DuplicateReview.ps1
+
+      - name: Test offline Android tool setup
+        run: .\tests\Test-AndroidTools.ps1
 
       - name: Save the portable app and SHA-256 checksum
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

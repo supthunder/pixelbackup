@@ -257,7 +257,7 @@ namespace PixelBackup
             }
         }
 
-        private static string LocalPath(string path)
+        internal static string LocalPath(string path)
         {
             if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Select a local Windows folder.");
             path = path.Replace('/', '\\');

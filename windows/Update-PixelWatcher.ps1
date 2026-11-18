@@ -11,6 +11,13 @@
 param([Parameter(Mandatory)][string]$Adb)
 
 $ErrorActionPreference = 'Stop'
+$updateFailure = 'Reinstall the complete Pixel Backup release, then retry the USB update.'
+trap {
+    $usbMessage = $_.Exception.GetBaseException().Data['PixelBackupUsbMessage']
+    if ($usbMessage) { $updateFailure = $usbMessage }
+    [Console]::Error.WriteLine('PixelBackupError: ' + $updateFailure)
+    exit 1
+}
 # The first pair identifies the original, hardware-tested f7b02b1 release.
 $release = @(
     @{
@@ -31,8 +38,9 @@ foreach ($entry in $release) {
     }
     $entry.Payload = [Convert]::ToBase64String([IO.File]::ReadAllBytes($source))
 }
+$updateFailure = 'Reconnect and unlock the paired Pixel, approve USB debugging and Magisk for Shell, and retry the update.'
 . (Join-Path $PSScriptRoot 'PixelWatcherUsb.ps1') -Adb $Adb
-if ($mode -ne 'CHECK') { throw 'Pair this Pixel first with Install-PixelWatcher.ps1.' }
+if ($mode -ne 'CHECK') { Stop-UsbSetup 'Choose Pair my Pixel first, then use Update backup helper for this phone.' }
 
 $upgrade = @'
 set -eu

@@ -6,6 +6,9 @@
     .\windows\Build-PixelBackup.ps1 -InstallDesktopShortcut -Launch
 .EXAMPLE
     .\windows\Build-PixelBackup.ps1 -Destination .\dist\app -PackagePath .\dist\Pixel-Backup-Windows-x64.zip
+.PARAMETER RestartRunningApp
+    Ask the running copy in the destination folder to close normally for an update,
+    then reopen it. An active backup or another operation shows its normal close prompt.
 .OUTPUTS
     Absolute path of the installed Pixel Backup.exe.
 #>
@@ -14,6 +17,7 @@ param(
     [string]$Destination = (Join-Path $env:LOCALAPPDATA 'PixelBackup\app'),
     [string]$PackagePath,
     [switch]$InstallDesktopShortcut,
+    [switch]$RestartRunningApp,
     [switch]$Launch
 )
 
@@ -59,13 +63,46 @@ function Publish-StagedFiles([string]$Stage, [string]$Parent, [string[]]$Names) 
             $changes.Add(@{Target=$target; Backup=$backup})
         }
     } catch {
+        $failure = $_
         for ($i = $changes.Count - 1; $i -ge 0; $i--) {
             $change = $changes[$i]
             if ($change.Backup) { [IO.File]::Copy($change.Backup, $change.Target, $true) }
             else { [IO.File]::Delete($change.Target) }
         }
-        throw
+        if ($name -eq $exeName) {
+            throw "Windows could not replace $target. Close the running app and retry the update. $($failure.Exception.GetBaseException().Message)"
+        }
+        throw $failure
     }
+}
+
+function Close-RunningDesktop([string]$Exe, [bool]$Restart) {
+    $reopen = $false
+    $name = [IO.Path]::GetFileNameWithoutExtension($Exe)
+    foreach ($process in [Diagnostics.Process]::GetProcessesByName($name)) {
+        try {
+            try { $image = $process.MainModule.FileName }
+            catch [ComponentModel.Win32Exception], [InvalidOperationException] { continue }
+            if ($image -ne $Exe -or $process.HasExited) { continue }
+            if (-not $Restart) {
+                throw "Pixel Backup is open at $Exe. Close it and rerun this update, or rerun with -RestartRunningApp to close and reopen it."
+            }
+            if ($process.SessionId -ne [Diagnostics.Process]::GetCurrentProcess().SessionId) {
+                throw 'Pixel Backup is open in another Windows session. Close it there before updating.'
+            }
+            Write-Host 'Waiting for Pixel Backup to close. Respond to any open backup prompt in its window.'
+            $reopen = $true
+            try { $sent = $process.CloseMainWindow() }
+            catch [InvalidOperationException] {
+                if ($process.HasExited) { continue }
+                throw
+            }
+            if ((-not $sent -and -not $process.HasExited) -or -not $process.WaitForExit(30000)) {
+                throw 'Pixel Backup is still open. Finish the current operation, close the app and rerun the update.'
+            }
+        } finally { $process.Dispose() }
+    }
+    $reopen
 }
 
 function Compile-Desktop([string]$Output, [string[]]$Sources) {
@@ -76,7 +113,8 @@ function Compile-Desktop([string]$Output, [string[]]$Sources) {
     if (-not [IO.File]::Exists($compiler)) { throw 'The Windows 64-bit .NET Framework compiler is missing.' }
     $arguments = @('/nologo', '/target:winexe', '/platform:x64', '/langversion:5', '/codepage:65001', '/optimize+',
         '/main:PixelBackup.Program', "/out:$Output", '/win32manifest:app.manifest', '/win32icon:PixelBackup.ico',
-        '/resource:MainWindow.xaml,PixelBackup.MainWindow.xaml', '/resource:PixelBackup.ico,PixelBackup.PixelBackup.ico')
+        '/resource:MainWindow.xaml,PixelBackup.MainWindow.xaml', '/resource:PixelBackup.ico,PixelBackup.PixelBackup.ico',
+        '/resource:Welcome.jpg,PixelBackup.Welcome.jpg')
     $references = @('System', 'System.Core', 'System.Configuration', 'System.Data', 'System.Drawing', 'System.IO.Compression',
         'System.IO.Compression.FileSystem', 'System.Management', 'System.Net.Http', 'System.Runtime.Serialization', 'System.Security',
         'System.Web', 'System.Web.Extensions', 'System.Windows.Forms', 'System.Xaml', 'System.Xml', 'System.Xml.Linq',
@@ -148,7 +186,8 @@ $outputDir = [IO.Directory]::CreateDirectory($ExecutionContext.SessionState.Path
 $exe = Join-Path $outputDir $exeName
 $receipt = Join-Path $outputDir $receiptName
 $sources = @(Get-ChildItem -LiteralPath $app -File -Filter '*.cs' | Sort-Object Name)
-$buildInputs = @($sources.FullName) + @($PSCommandPath, (Join-Path $app 'MainWindow.xaml'), (Join-Path $app 'PixelBackup.ico'), (Join-Path $app 'app.manifest'))
+$buildInputs = @($sources.FullName) + @($PSCommandPath, (Join-Path $app 'MainWindow.xaml'), (Join-Path $app 'PixelBackup.ico'),
+    (Join-Path $app 'Welcome.jpg'), (Join-Path $app 'app.manifest'))
 $payload = [ordered]@{ 'Pixel Backup.exe.config' = (Join-Path $app 'App.config') }
 $backend = @(Get-ChildItem -LiteralPath $PSScriptRoot -File | Where-Object { $_.Extension -in '.ps1', '.psm1' -and $_.Name -notmatch '^(Build|Package)-PixelBackup\.psm?1$' })
 $helpFiles = @(Get-ChildItem -LiteralPath (Join-Path $repo 'docs') -Recurse -File | Where-Object { $_.Extension -in '.md', '.png', '.jpg' })
@@ -171,6 +210,7 @@ foreach ($name in $payload.Keys) {
 $fingerprint = Get-TextHash ($hashLines -join "`n")
 $mutex = [Threading.Mutex]::new($false, ('Local\PixelBackup.Build.' + (Get-TextHash $outputDir.ToUpperInvariant())))
 $held = $false
+$reopen = $false
 try {
     try { $held = $mutex.WaitOne(90000) } catch [Threading.AbandonedMutexException] { $held = $true }
     if (-not $held) { throw 'Another Pixel Backup installation is still running.' }
@@ -184,7 +224,8 @@ try {
         }
     }
     if (-not $ready) {
-        $names = @($payload.Keys) + @($exeName, $receiptName)
+        # Replace the executable first so a file lock is detected before publishing helpers.
+        $names = @($exeName) + @($payload.Keys) + @($receiptName)
         if (-not $managed) {
             foreach ($name in $names) {
                 if (Test-Path -LiteralPath (Join-Path $outputDir $name)) { throw "An existing file occupies $name in $outputDir. Choose a dedicated installation folder." }
@@ -200,14 +241,27 @@ try {
             }
             $info = [ordered]@{ product = $product; inputs = $fingerprint; executable = (Get-FileDigest (Join-Path $stage $exeName)) }
             [IO.File]::WriteAllText((Join-Path $stage $receiptName), ($info | ConvertTo-Json))
+            if ($managed) { $reopen = Close-RunningDesktop $exe $RestartRunningApp }
             Publish-StagedFiles $stage $outputDir $names
         } finally { Remove-WorkDirectory $outputDir $stage }
     }
     if ($PackagePath) { Write-ReleaseZip $PackagePath (@($exeName, $receiptName) + @($payload.Keys)) }
     if ($InstallDesktopShortcut) { Save-DesktopShortcut $exe }
+} catch {
+    $failure = $_
+    if ($reopen -and [IO.File]::Exists($receipt) -and [IO.File]::Exists($exe)) {
+        # Only reopen a published, receipt-backed version after a failed update.
+        try {
+            $installed = [IO.File]::ReadAllText($receipt) | ConvertFrom-Json
+            if ($installed.product -ceq $product -and $installed.executable -eq (Get-FileDigest $exe)) {
+                Start-Process -FilePath $exe -WorkingDirectory $outputDir
+            }
+        } catch { Write-Warning "Could not reopen Pixel Backup at $exe." }
+    }
+    throw $failure
 } finally {
     if ($held) { $mutex.ReleaseMutex() }
     $mutex.Dispose()
 }
-if ($Launch) { Start-Process -FilePath $exe -WorkingDirectory $outputDir }
+if ($Launch -or $reopen) { Start-Process -FilePath $exe -WorkingDirectory $outputDir }
 $exe

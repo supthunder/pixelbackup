@@ -1,9 +1,11 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Markup;
 using System.Windows.Media.Imaging;
 
@@ -23,11 +25,21 @@ namespace PixelBackup
                 Window window = (Window)XamlReader.Load(stream);
                 using (Stream icon = assembly.GetManifestResourceStream("PixelBackup.PixelBackup.ico"))
                 {
-                    if (icon != null)
-                    {
-                        var decoder = new IconBitmapDecoder(icon, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-                        window.Icon = decoder.Frames[decoder.Frames.Count - 1];
-                    }
+                    if (icon == null) throw new InvalidDataException("The application icon is missing.");
+                    var decoder = new IconBitmapDecoder(icon, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+                    BitmapFrame largest = decoder.Frames.OrderByDescending(frame => frame.PixelWidth).First();
+                    largest.Freeze();
+                    window.Icon = largest;
+                }
+                Image welcomeArt = window.FindName("WelcomeArt") as Image;
+                if (welcomeArt == null) throw new InvalidDataException("The welcome screen is missing its photo control.");
+                using (Stream photo = assembly.GetManifestResourceStream("PixelBackup.Welcome.jpg"))
+                {
+                    if (photo == null) throw new InvalidDataException("The welcome photo is missing.");
+                    var decoder = new JpegBitmapDecoder(photo, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+                    BitmapFrame frame = decoder.Frames[0];
+                    frame.Freeze();
+                    welcomeArt.Source = frame;
                 }
                 return window;
             }

@@ -8,6 +8,8 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Threading;
 
@@ -25,11 +27,14 @@ namespace PixelBackup
         private string folder;
         private ScanResult scan;
         private CancellationTokenSource work;
+        private string workPage;
         private bool canCancel, stopping, reachedReady, closeRequested, closed;
         private PlanSession session;
         private List<MediaEntry> confirmation;
         private string lastReader = "";
         private string setupNotice;
+        private int usbToolsRevision;
+        private int readerRevision;
 
         public DesktopApp(Window window, string windowsDirectory, string stateDirectory)
         {
@@ -41,8 +46,21 @@ namespace PixelBackup
             profiles = new Profiles(Path.GetFullPath(stateDirectory));
             Wire("NavBackup", () => Navigate("Backup"));
             Wire("NavLibrary", () => Navigate("Library"));
-            Wire("NavSetup", () => { Navigate("Setup"); RefreshReader(); });
+            Wire("NavSetup", ShowSetup);
             Wire("ChooseFolder", ChooseFolder);
+            Wire("ChangeFolder", ChooseFolder);
+            Wire("WelcomeLibrary", () => Navigate("Library"));
+            Wire("WelcomeSetup", ShowSetup);
+            var dropSurface = Control<Border>("FolderDropSurface");
+            dropSurface.PreviewDragOver += PreviewFolderDrop;
+            dropSurface.DragLeave += delegate { dropSurface.Tag = null; };
+            dropSurface.PreviewDrop += DropFolder;
+            var fileTable = Control<DataGrid>("FileTable");
+            fileTable.GotKeyboardFocus += (sender, e) =>
+            {
+                if (ReferenceEquals(e.NewFocus, fileTable) && fileTable.Items.Count > 0)
+                    fileTable.CurrentCell = new DataGridCellInfo(fileTable.CurrentItem ?? fileTable.Items[0], fileTable.CurrentColumn ?? fileTable.Columns[0]);
+            };
             Wire("ScanButton", Rescan);
             Wire("ShareButton", StartShare);
             Wire("StopButton", StopShare);
@@ -50,15 +68,19 @@ namespace PixelBackup
             Wire("CancelButton", CancelWork);
             if (window.FindName("CancelImport") != null) Wire("CancelImport", CancelWork);
             Wire("AccessButton", GiveAccess);
-            Wire("ImportFolder", () => { string path = DesktopPlatform.PickFolder("Select your extracted Google Photos or Takeout folder"); if (path != null) ImportExport(path, false); });
+            Wire("ImportFolder", () => { string path = DesktopPlatform.PickFolder(window, "Select your extracted Google Photos or Takeout folder"); if (path != null) ImportExport(path, false); });
             Wire("ImportZip", PickArchives);
             Wire("ExportReport", ExportAudit);
             Wire("NewProfile", NewProfile);
             Wire("ClearCatalog", ClearCatalog);
             Wire("OpenPhotos", () => OpenUrl("https://photos.google.com/"));
             Wire("OpenGuide", () => OpenUrl("https://github.com/supthunder/pixelbackup/blob/main/docs/PC_FOLDER.md"));
-            Wire("PairPhone", () => SetupPhone(true));
-            Wire("UpdateWatcher", () => SetupPhone(false));
+            Wire("PairPhone", () => SetupUsb(UsbAction.Pair));
+            Wire("SetupBackup", () => Navigate("Backup"));
+            Wire("UpdateWatcher", () => SetupUsb(UsbAction.Update));
+            Wire("GetUsbTools", () => SetupUsb(UsbAction.Prepare));
+            Wire("BrowseAdb", BrowseAdb);
+            Wire("CancelSetup", CancelWork);
             Wire("WarningsButton", ShowWarnings);
             RoutedEventHandler refreshSelection = delegate { UpdateCounts(); RefreshButtons(); if (scan != null && Idle) DescribeScan(); };
             Control<CheckBox>("SkipCopies").Checked += refreshSelection;
@@ -98,7 +120,18 @@ namespace PixelBackup
 
         private bool Idle { get { return work == null && session == null; } }
         private bool Skip { get { return Control<CheckBox>("SkipCopies").IsChecked == true; } }
-        private void Text(string name, string text) { Control<TextBlock>(name).Text = text; }
+        private void Text(string name, string text, bool announce = true)
+        {
+            var label = Control<TextBlock>(name);
+            if (label.Text == text) return;
+            label.Text = text;
+            if (announce && label.IsVisible && AutomationProperties.GetLiveSetting(label) != AutomationLiveSetting.Off &&
+                AutomationPeer.ListenerExists(AutomationEvents.LiveRegionChanged))
+            {
+                var peer = UIElementAutomationPeer.CreatePeerForElement(label);
+                if (peer != null) peer.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+            }
+        }
         private void Enabled(string name, bool value) { Control<FrameworkElement>(name).IsEnabled = value; }
         private void Status(string title, string detail) { Text("StatusText", title); Text("StatusDetail", detail ?? ""); }
         private void Error(string title, Exception error)
@@ -112,6 +145,13 @@ namespace PixelBackup
         {
             foreach (string name in new[] { "Backup", "Library", "Setup" })
                 Control<FrameworkElement>(name + "View").Visibility = name == page ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void ShowSetup()
+        {
+            Navigate("Setup");
+            RefreshReader();
+            RefreshUsbTools();
         }
 
         private void BindProfiles()
@@ -129,7 +169,8 @@ namespace PixelBackup
             scan = null;
             Control<DataGrid>("FileTable").ItemsSource = null;
             Status(folder == null ? "Choose a photo folder" : "Ready to scan", "Check exact copies against “" + profiles.Active.Name + "” on this PC.");
-            Text("ImportStatus", "Add a Google Photos export or confirm a completed batch to build this library.");
+            Text("ImportStatus", "");
+            Text("WelcomeProfile", profiles.Active.Name);
             Text("FolderPath", folder == null ? "No folder selected" : FolderLabel(folder));
             UpdateCounts(); RefreshButtons(); RefreshCatalog();
         }
@@ -170,20 +211,26 @@ namespace PixelBackup
         {
             bool idle = Idle;
             bool hasFiles = scan != null && scan.Items.Any(x => !Skip || x.Decision == "Ready");
-            foreach (string name in new[] { "ChooseFolder", "ImportFolder", "ImportZip", "NewProfile", "ClearCatalog", "ProfileSelect", "UpdateWatcher", "PairPhone" }) Enabled(name, idle);
+            Control<FrameworkElement>("WelcomeView").Visibility = folder == null ? Visibility.Visible : Visibility.Collapsed;
+            Control<FrameworkElement>("ReviewView").Visibility = folder == null ? Visibility.Collapsed : Visibility.Visible;
+            foreach (string name in new[] { "ChooseFolder", "ChangeFolder", "ImportFolder", "ImportZip", "NewProfile", "ClearCatalog", "ProfileSelect", "UpdateWatcher", "PairPhone" }) Enabled(name, idle);
             Enabled("ScanButton", idle && folder != null);
             Enabled("SkipCopies", idle);
             Enabled("ShareButton", idle && hasFiles);
             Enabled("StopButton", session != null && !stopping);
             Enabled("ConfirmButton", idle && confirmation != null && confirmation.Count > 0);
-            Enabled("CancelButton", work != null && canCancel && !work.IsCancellationRequested);
-            if (window.FindName("CancelImport") != null) Enabled("CancelImport", work != null && canCancel && !work.IsCancellationRequested);
+            bool cancelAvailable = work != null && canCancel && !work.IsCancellationRequested;
+            Enabled("CancelButton", workPage == "Backup" && cancelAvailable);
+            Enabled("CancelImport", workPage == "Library" && cancelAvailable);
             Enabled("AccessButton", idle && folder != null && CanGrant(folder));
             Enabled("WarningsButton", scan != null && scan.Warnings.Count > 0);
             Enabled("ExportReport", idle && auditGroups > 0);
+            Enabled("BrowseAdb", idle);
+            Enabled("GetUsbTools", idle);
+            Enabled("CancelSetup", work != null && workPage == "Setup" && canCancel && !work.IsCancellationRequested);
             var bar = Control<ProgressBar>("ProgressBar");
-            bar.IsIndeterminate = work != null;
-            bar.Visibility = work != null ? Visibility.Visible : Visibility.Collapsed;
+            bar.IsIndeterminate = workPage == "Backup";
+            bar.Visibility = bar.IsIndeterminate ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private static string PreviewPath(string value)
@@ -219,17 +266,20 @@ namespace PixelBackup
             Status(available == 0 ? "Nothing queued to share" : "Ready to share", detail + "  ·  " + profiles.Active.Name);
         }
 
-        private CancellationTokenSource Begin(string title, string detail, bool cancellable)
+        private CancellationTokenSource Begin(string title, string detail, bool cancellable, string page = "Backup")
         {
             work = new CancellationTokenSource(); canCancel = cancellable;
-            Status(title, detail); RefreshButtons();
+            workPage = page;
+            if (page == "Backup") Status(title, detail);
+            else Text(page == "Library" ? "ImportStatus" : "SetupStatus", detail);
+            RefreshButtons();
             return work;
         }
 
         private void End(CancellationTokenSource operation)
         {
             if (work != operation) return;
-            work = null; canCancel = false; operation.Dispose();
+            work = null; workPage = null; canCancel = false; operation.Dispose();
             if (closed) return;
             RefreshButtons();
             if (closeRequested)
@@ -266,20 +316,58 @@ namespace PixelBackup
 
         private IProgress<string> Progress(CancellationTokenSource operation, string element)
         {
-            return new ThrottledProgress(window.Dispatcher, s => { if (work == operation && !closed) Text(element, s); });
+            return new ThrottledProgress(window.Dispatcher, s => { if (work == operation && !closed) Text(element, s, false); });
         }
 
         private void ChooseFolder()
         {
-            string path = DesktopPlatform.PickFolder("Choose a local folder of photos and videos");
+            string path = DesktopPlatform.PickFolder(window, "Choose a folder of photos and videos");
             if (path != null) SelectFolder(path);
+        }
+
+        private static string DroppedFolder(IDataObject data)
+        {
+            if (!data.GetDataPresent(DataFormats.FileDrop, false)) return null;
+            var paths = data.GetData(DataFormats.FileDrop, false) as string[];
+            if (paths == null || paths.Length != 1 || string.IsNullOrEmpty(paths[0])) return null;
+            string path = MediaScanner.LocalPath(paths[0]);
+            return Directory.Exists(path) ? path : null;
+        }
+
+        private void PreviewFolderDrop(object sender, DragEventArgs e)
+        {
+            ((Border)sender).Tag = ReadFolderDrag(e) != null ? "Dragging" : null;
+        }
+
+        private void DropFolder(object sender, DragEventArgs e)
+        {
+            ((Border)sender).Tag = null;
+            string path = ReadFolderDrag(e);
+            if (path != null) SelectFolder(path);
+        }
+
+        private string ReadFolderDrag(DragEventArgs e)
+        {
+            e.Handled = true;
+            e.Effects = DragDropEffects.None;
+            var allowed = e.AllowedEffects & (DragDropEffects.Link | DragDropEffects.Copy);
+            if (!Idle || allowed == DragDropEffects.None) return null;
+            string path;
+            try { path = DroppedFolder(e.Data); }
+            catch (ArgumentException) { return null; }
+            catch (System.Runtime.InteropServices.ExternalException) { return null; }
+            catch (IOException) { return null; }
+            catch (UnauthorizedAccessException) { return null; }
+            if (path != null) e.Effects = (allowed & DragDropEffects.Link) != 0 ? DragDropEffects.Link : DragDropEffects.Copy;
+            return path;
         }
 
         private void CancelWork()
         {
             if (work == null || !canCancel) return;
             work.Cancel();
-            Text("StatusDetail", "Canceling the current operation…");
+            string destination = workPage == "Library" ? "ImportStatus" : workPage == "Setup" ? "SetupStatus" : "StatusDetail";
+            Text(destination, "Canceling…");
             RefreshButtons();
         }
 
@@ -409,7 +497,7 @@ namespace PixelBackup
             if (!Idle || paths.Length == 0) return;
             Navigate("Library");
             var current = library; confirmation = null;
-            var operation = Begin("Reading Takeout", "Hashing the media in your export.", true);
+            var operation = Begin("Reading Takeout", "Checking the files in your export…", true, "Library");
             var progress = Progress(operation, "ImportStatus");
             int processed = 0, added = 0;
             try
@@ -420,7 +508,6 @@ namespace PixelBackup
                     processed++; added += result.Added;
                 }
                 Text("ImportStatus", "Import complete · " + added.ToString("N0") + (added == 1 ? " new fingerprint · " : " new fingerprints · ") + processed.ToString("N0") + (processed == 1 ? " export read." : " exports read."));
-                Status("Takeout imported", "Review the repeated export paths in Library.");
             }
             catch (OperationCanceledException) { Text("ImportStatus", "Import canceled. Completed exports kept: " + processed + "."); }
             catch (Exception ex) { Text("ImportStatus", "Import stopped. Completed exports kept: " + processed + ". " + ex.GetBaseException().Message); }
@@ -439,7 +526,7 @@ namespace PixelBackup
         {
             if (!Idle || MessageBox.Show(window, "Clear all Takeout and manually confirmed fingerprints in “" + profiles.Active.Name + "”? Your photos stay in place.", "Clear local catalog", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
             var current = library;
-            var operation = Begin("Clearing local catalog", profiles.Active.Name, false);
+            var operation = Begin("Clearing local catalog", "Clearing this profile’s catalog…", false, "Library");
             try { await Task.Run(() => current.Clear()); UseProfile(); Text("ImportStatus", "Local fingerprints cleared."); }
             catch (Exception ex) { Error("Could not clear this library", ex); }
             finally { End(operation); }
@@ -452,7 +539,7 @@ namespace PixelBackup
             var dialog = new Microsoft.Win32.SaveFileDialog { Filter = "Text report (*.txt)|*.txt", FileName = "Pixel Backup duplicate report.txt", Title = "Save duplicate-path report" };
             if (dialog.ShowDialog(window) != true) return;
             var current = library;
-            var operation = Begin("Saving report", profiles.Active.Name, false);
+            var operation = Begin("Saving report", "Writing the duplicate report…", false, "Library");
             string destination = dialog.FileName, temp = Path.Combine(Path.GetDirectoryName(destination), ".pixel-report-" + Guid.NewGuid().ToString("N"));
             try
             {
@@ -479,16 +566,53 @@ namespace PixelBackup
 
         private async void RefreshReader()
         {
+            int version = ++readerRevision;
             try
             {
                 string[] info = await Task.Run(() => DesktopPlatform.ReaderInfo());
-                if (closed) return;
+                if (closed || version != readerRevision) return;
                 lastReader = info.Length == 0 ? "" : info[0];
-                Text("ReaderStatus", lastReader == "Ready" ? "PixelReader ready" : lastReader == "Missing" ? "Pair your PC" : lastReader == "Disabled" ? "Reader disabled" : "Status unavailable");
+                bool prepared = lastReader == "Ready" && File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PixelBackup-Pairing", "PixelReader.clixml"));
+                ShowPreparedSetup(prepared);
+                string readerState, pairingDetail;
+                switch (lastReader)
+                {
+                    case "Ready":
+                        readerState = "PixelReader ready";
+                        pairingDetail = setupNotice ?? "The dedicated Windows account for read-only sharing is enabled.";
+                        break;
+                    case "Missing":
+                        readerState = "Pair your PC";
+                        pairingDetail = "Pair your Pixel to set up read-only access on this PC.";
+                        break;
+                    case "Disabled":
+                        readerState = "Reader disabled";
+                        pairingDetail = "The PixelReader account is disabled in Windows.";
+                        break;
+                    case "Expired":
+                        readerState = "Reader password expired";
+                        pairingDetail = "The Windows reader password expired. Open the setup guide to renew it.";
+                        break;
+                    default:
+                        readerState = "Check Windows access";
+                        pairingDetail = "Open the setup guide to check Windows sharing access.";
+                        break;
+                }
+                Text("ReaderStatus", readerState);
                 Text("ExpiryStatus", info.Length > 1 ? (info[1] == "No expiry date" ? info[1] : "Password expires " + info[1]) : "Windows local account");
-                Text("PairingStatus", lastReader == "Ready" ? (setupNotice ?? "The Windows reader is enabled. Existing installations can update their phone over USB for filtered sharing.") : "Pair your Pixel on this PC to enable read-only sharing.");
+                Text("WelcomeDevice", lastReader == "Ready" ? "Windows access ready" : lastReader == "Missing" ? "Pair your Pixel by USB" : "Check setup");
+                Text("PairingStatus", pairingDetail);
             }
-            catch (Exception) { if (!closed) { Text("ReaderStatus", "Status unavailable"); Text("ExpiryStatus", "Open Setup to check pairing."); } }
+            catch (Exception) { if (!closed && version == readerRevision) { ShowPreparedSetup(false); Text("WelcomeDevice", "Check setup"); Text("ReaderStatus", "Status unavailable"); Text("ExpiryStatus", "Open Setup to check pairing."); } }
+        }
+
+        private void ShowPreparedSetup(bool prepared)
+        {
+            Control<Button>("SetupBackup").Visibility = prepared ? Visibility.Visible : Visibility.Collapsed;
+            Text("SetupHeading", prepared ? "Windows sharing is set up" : "Pair with this PC");
+            Text("SetupInstructions", prepared
+                ? "Open Backup to choose a folder for your paired Pixel. You can also pair another phone with this PC."
+                : "Turn on USB debugging on your rooted Pixel or Pixel XL. Unlock the phone, connect it with a USB data cable, and approve the prompts on its screen.");
         }
 
         private async void GiveAccess()
@@ -507,36 +631,117 @@ namespace PixelBackup
             finally { End(operation); }
         }
 
-        private async void SetupPhone(bool firstPair)
+        private enum UsbAction { Pair, Update, Prepare }
+
+        private void UsbToolsFound(string path)
         {
-            if (!Idle) return;
-            string adb = DesktopPlatform.FindAdb(window);
-            if (adb == null) return;
-            var args = new List<string> { "-Adb", adb };
-            if (firstPair)
-            {
-                string path = DesktopPlatform.PickFolder("Choose the local photo folder PixelReader should be allowed to read");
-                if (path == null) return;
-                string[] addresses = DesktopPlatform.LanAddresses();
-                if (addresses.Length == 0) { MessageBox.Show(window, "Connect your PC to the same network as the Pixel.", "Pair Pixel"); return; }
-                string ip = DesktopPlatform.Prompt(window, "Pair Pixel", "Select this PC’s home-network address. Keep the Pixel unlocked and connected by USB.", null, addresses);
-                if (ip == null) return;
-                if (MessageBox.Show(window, "Pair this PC with your original Pixel and give the dedicated Windows reader read access to:\n\n" + path + "\n\nThe phone will use " + ip + " over Wi-Fi.", "Pair Pixel", MessageBoxButton.OKCancel, MessageBoxImage.Information, MessageBoxResult.Cancel) != MessageBoxResult.OK) return;
-                args.AddRange(new[] { "-ComputerAddress", ip, "-LibraryPath", path });
-            }
-            var operation = Begin(firstPair ? "Pairing Pixel" : "Updating phone watcher", "Keep the Pixel connected and unlocked.", false);
-            Text("PairingStatus", "Working over USB. Check the phone for debugging or root prompts.");
+            Text("UsbToolsStatus", path == null ? "Google USB tools are available to download." : "USB tools ready · " + path);
+        }
+
+        private async void RefreshUsbTools()
+        {
+            if (workPage == "Setup") return;
+            int version = ++usbToolsRevision;
             try
             {
-                string script = Path.Combine(windowsDirectory, firstPair ? "Pair-PixelDesktop.ps1" : "Update-PixelWatcher.ps1");
-                await Task.Run(() => DesktopPlatform.RunScript(script, firstPair, true, args.ToArray()));
-                setupNotice = firstPair ? "USB pairing completed. Your Pixel is ready for Wi-Fi sharing." : "The filtered watcher is installed on the Pixel.";
-                RefreshReader();
-                Text("PairingStatus", setupNotice);
-                Status("Pixel ready", "Choose a folder to scan.");
+                string path = await Task.Run(() => AndroidTools.Find());
+                if (closed || version != usbToolsRevision) return;
+                UsbToolsFound(path);
+                if (path == null || DesktopPlatform.Elevated)
+                {
+                    Text("UsbDeviceStatus", path == null ? "Set up USB tools to check the phone connection." : "Reopen Pixel Backup as a regular Windows app to check USB.");
+                    return;
+                }
+                Text("UsbDeviceStatus", "Checking the USB connection…");
+                string issue = await Task.Run(() => UsbPhone.Check(path));
+                if (!closed && version == usbToolsRevision) Text("UsbDeviceStatus", issue ?? "Original Pixel connected by USB.");
             }
-            catch (OperationCanceledException) { Text("PairingStatus", "Windows approval canceled."); }
-            catch (Exception ex) { Text("PairingStatus", ex.GetBaseException().Message); Error("Pixel setup needs attention", ex); }
+            catch (Exception ex) { if (!closed && version == usbToolsRevision) Text("UsbDeviceStatus", ex.GetBaseException().Message); }
+        }
+
+        private void BrowseAdb()
+        {
+            if (!Idle) return;
+            try
+            {
+                var picker = new Microsoft.Win32.OpenFileDialog { Title = "Choose adb.exe from a Platform-Tools folder you trust", Filter = "Android Debug Bridge (adb.exe)|adb.exe", FileName = "adb.exe", CheckFileExists = true };
+                if (picker.ShowDialog(window) != true) return;
+                AndroidTools.Remember(picker.FileName);
+                ++usbToolsRevision;
+                UsbToolsFound(picker.FileName);
+                Text("SetupStatus", "Saved these USB tools for pairing and updates.");
+                RefreshUsbTools();
+            }
+            catch (Exception ex) { Text("SetupStatus", ex.GetBaseException().Message); }
+        }
+
+        private async void SetupUsb(UsbAction action)
+        {
+            if (!Idle) return;
+            if (DesktopPlatform.Elevated)
+            {
+                Text("SetupStatus", "Close Pixel Backup and reopen it from your desktop as a regular Windows app to use USB setup.");
+                return;
+            }
+            ++usbToolsRevision;
+            var operation = Begin("Checking USB tools", "Looking for Android SDK Platform-Tools on this PC.", false, "Setup");
+            Text("SetupStatus", "Checking USB tools on this PC…");
+            try
+            {
+                string adb = await Task.Run(() => AndroidTools.Find());
+                operation.Token.ThrowIfCancellationRequested();
+                if (closeRequested) return;
+                if (adb == null)
+                {
+                    UsbToolsFound(null);
+                    if (!DesktopPlatform.AcceptToolsDownload(window)) { Text("SetupStatus", "USB tools download canceled."); return; }
+                    canCancel = true; RefreshButtons();
+                    Text("SetupStatus", "Downloading Google's USB tools…");
+                    var progress = new ThrottledProgress(window.Dispatcher, message => {
+                        if (!closed && work == operation && canCancel && !operation.IsCancellationRequested) Text("SetupStatus", message, false);
+                    });
+                    adb = await Task.Run(() => AndroidTools.Install(operation.Token, progress));
+                    operation.Token.ThrowIfCancellationRequested();
+                    canCancel = false; RefreshButtons();
+                }
+                ++usbToolsRevision;
+                UsbToolsFound(adb);
+                if (closeRequested) return;
+                if (action == UsbAction.Prepare)
+                {
+                    Text("SetupStatus", "USB tools ready. Connect your unlocked Pixel to pair or update its backup helper.");
+                    return;
+                }
+                bool pair = action == UsbAction.Pair;
+                Text("UsbDeviceStatus", "Checking the USB connection…");
+                string issue = await Task.Run(() => UsbPhone.Check(adb));
+                Text("UsbDeviceStatus", issue ?? "Original Pixel connected by USB.");
+                if (closeRequested) return;
+                if (issue != null)
+                {
+                    Text("SetupStatus", pair ? "When your Pixel is connected and unlocked, try pairing again." : "Choose Update backup helper when the connection is ready.");
+                    return;
+                }
+                var args = new List<string> { "-Adb", adb };
+                if (pair)
+                {
+                    string path = folder;
+                    if (path == null || !Directory.Exists(path)) path = DesktopPlatform.PickFolder(window, "Choose the photo folder your Pixel can read");
+                    if (path == null) { Text("SetupStatus", "Pairing canceled."); return; }
+                    string ip = DesktopPlatform.ConfirmPairing(window, ref path);
+                    if (ip == null) { Text("SetupStatus", "Pairing canceled."); return; }
+                    args.AddRange(new[] { "-ComputerAddress", ip, "-LibraryPath", path });
+                }
+                Text("SetupStatus", pair ? "Pairing over USB. Keep the Pixel unlocked and allow its USB debugging and Magisk prompts." :
+                    "Updating the backup helper over USB. Keep the Pixel unlocked and approve its Magisk prompt if asked.");
+                string script = Path.Combine(windowsDirectory, pair ? "Pair-PixelDesktop.ps1" : "Update-PixelWatcher.ps1");
+                await Task.Run(() => DesktopPlatform.RunSetupScript(script, args.ToArray()));
+                setupNotice = pair ? "USB pairing completed on this PC." : "The Pixel's backup helper was updated over USB.";
+                Text("SetupStatus", pair ? "Your Pixel is paired. Open Backup to review and share photos over Wi-Fi." : "Backup helper ready. Open Backup to share a folder.");
+                RefreshReader();
+            }
+            catch (OperationCanceledException) { if (!closed) Text("SetupStatus", "Setup canceled. You can try again here."); }
+            catch (Exception ex) { if (!closed) Text("SetupStatus", ex.GetBaseException().Message); }
             finally { End(operation); }
         }
 

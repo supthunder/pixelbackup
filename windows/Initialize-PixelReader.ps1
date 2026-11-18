@@ -1,18 +1,18 @@
 #Requires -Version 5.1
-#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
     Prepare the Windows reader and a local photo library for Pixel Backup.
 .EXAMPLE
     .\windows\Initialize-PixelReader.ps1 -LibraryPath 'D:\Photo Library'
 .NOTES
-    Run in elevated, 64-bit Windows PowerShell. The new account stays local
+    Run initial account setup in elevated, 64-bit Windows PowerShell. The new account stays local
     and the password is prompted for securely unless passed as a SecureString.
     The script reuses its own enabled standard reader without changing its
     password. Choose the parent of the folders you intend to share.
     NTFS folders get an inheritable read rule. For FAT, FAT32 and exFAT, the
     picker enforces read-only access through the SMB share.
-    Use -ExistingReaderOnly to prepare another folder for an already paired PC.
+    Use -ExistingReaderOnly to prepare another folder with your current
+    Windows permissions. Folder owners can grant access without elevation.
 #>
 param(
     [Parameter(Mandatory)]
@@ -91,6 +91,10 @@ function Add-LibraryReadRule([string]$Path, $Acl, [Security.Principal.SecurityId
 
 if (-not [Environment]::Is64BitProcess) {
     throw 'Run this script in 64-bit Windows PowerShell.'
+}
+if (-not $ExistingReaderOnly -and
+    -not ([Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw 'Run initial Windows account setup from an elevated Windows PowerShell session.'
 }
 $library = Get-LibraryDirectory $LibraryPath
 $acl = $null

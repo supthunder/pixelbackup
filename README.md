@@ -1,12 +1,12 @@
 # Pixel Backup
 
-Back up a Windows photo folder through the Google Photos app on your original Pixel. Select an album on the PC, review exact duplicates and share it over Wi-Fi. The phone reads the selected originals from Windows as it needs them. A library larger than the phone's free space can stay on the PC.
+Back up a Windows photo folder through the Google Photos app on a rooted, first-generation Pixel. Drop a folder into Pixel Backup, review which files are new, and share them over Wi-Fi. The phone reads the selected originals from Windows as it needs them. A library larger than the phone's free space can stay on the PC.
 
 Vivek Revankar (@master-hax) developed the original Pixel storage mount that inspired this app. [Original project](https://github.com/master-hax/pixel-backup-gang) · [Contributors and references](#credits)
 
 **[Download Pixel Backup for Windows](https://github.com/supthunder/pixelbackup/releases/latest/download/Pixel-Backup-Windows-x64.zip)** · [SHA-256 checksum](https://github.com/supthunder/pixelbackup/releases/latest/download/Pixel-Backup-Windows-x64.zip.sha256) · [Release notes](https://github.com/supthunder/pixelbackup/releases)
 
-![The Windows app found four sample files, skipped a renamed copy and a Takeout match, and queued a JPEG and an MP4](docs/evidence/desktop-app.png)
+![Pixel Backup home on Windows, with Choose folder and Drop a folder here over an alpine lake, plus links to Library and Pixel setup](docs/evidence/desktop-home.png)
 
 ## Get the Windows app
 
@@ -20,14 +20,16 @@ Vivek Revankar (@master-hax) developed the original Pixel storage mount that ins
 
 ## Back up your first folder
 
-1. **Pair once.** Connect your rooted 2016 Pixel (`sailfish`) or Pixel XL (`marlin`) by USB, unlock the owner profile and open **Setup → Pair phone**. Choose the PC's LAN IPv4 address and approve USB debugging and Magisk on the phone. The paired watcher runs on stock Android 10 and waits for your selection after unlock. If you already paired with the earlier Windows picker, use **Update phone watcher** before sharing a desktop batch. [Setup and upgrades](docs/PC_FOLDER.md)
-2. **Choose a folder.** In **Backup**, select **Choose folder**. Scanning starts automatically. Try a fresh JPEG and a short MP4 first. The app groups byte-identical files and shows matches from your selected local library profile. To compare against an existing Google Photos account, import its Takeout export in **Library**. [Duplicate guide](docs/DUPLICATES.md)
+1. **Choose or drop a folder.** From **Backup**, select **Choose folder** or drop a folder from Explorer into the folder area. Try a fresh JPEG and a short MP4 first. The scan shows which files are new and which match another file in the folder or your local catalog. To include an existing Google Photos account in the comparison, import its Takeout export in **Library**. [Duplicate guide](docs/DUPLICATES.md)
+2. **Pair once over USB.** Connect and unlock your 2016 Pixel (`sailfish`) or Pixel XL (`marlin`) running stock Android 10 with Magisk. On a new PC, choose **Setup → Pair my Pixel**. The app finds Google's USB tool, `adb`, or offers to download it after you review the SDK terms. It reuses your folder and selects the network address when there is one suitable choice. Approve the phone's USB debugging and root prompts. Once paired, unplug the cable. On a prepared PC, choose **Open backup** for your previously paired phone or **Pair a Pixel** for a replacement. [Setup and upgrades](docs/PC_FOLDER.md)
 3. **Start sharing.** Keep the PC awake and the phone on the same private network. The Pixel reads the planned files from a read-only Windows share at `/storage/emulated/0/PixelBackup`. Open Google Photos → **Collections → On this device** and enable backup for the folder under the Google account you want to use. Check the folders Photos shows for nested albums. [Mount and verify](docs/PC_FOLDER.md#mount-and-verify)
 4. **Verify and finish.** In Google Photos, check each test item's **Details** for **Backed up**, **Original quality** and its account-storage message. Once backup finishes, close the previews and use **Stop sharing** on Windows. Select **Confirm backup** after the share closes cleanly. Check the profile and file count before recording the batch. Windows can observe reads from the Pixel. Google Photos supplies the upload result. [Google Photos backup checks](https://support.google.com/photos/answer/6193313?co=GENIE.Platform%3DAndroid&hl=en)
 
+![The Windows review found four files. Two are ready to share, one matches a Takeout file and one is a renamed copy in the folder](docs/evidence/desktop-app.png)
+
 ## What the original Pixel actually backed up
 
-On a first-generation Pixel running stock Android 10 build `QP1A.191005.007.A3`, the desktop app selected two of four sample files. The Pixel read **Alpine Lake.jpg** and **Evening Coast #2 [blue hour].mp4** byte-for-byte and denied access to the renamed JPEG and the file matched by Takeout. Google Photos automatically backed up both selected files and reported zero account storage for each. This test ran the released selection through a USB debugging tunnel. [Filtered backup test](docs/STORAGE_REVIEW.md#filtered-desktop-backup)
+In the v1.0 hardware test, the desktop app selected two of four sample files for a first-generation Pixel running stock Android 10 build `QP1A.191005.007.A3`. The Pixel read **Alpine Lake.jpg** and **Evening Coast #2 [blue hour].mp4** byte-for-byte and denied access to the renamed JPEG and the file matched by Takeout. Google Photos automatically backed up both selected files and reported zero account storage for each. The test carried the filtered selection through a USB debugging tunnel. [Filtered backup test](docs/STORAGE_REVIEW.md#filtered-desktop-backup)
 
 | JPEG from Windows | MP4 from Windows |
 | --- | --- |
@@ -64,3 +66,14 @@ Both paths in this sample contain the same JPEG. To investigate items in the clo
 | Software the app uses | **Nick Craig-Wood (@ncw)** and the rclone contributors provide the SMB client and mount. **Termux** packages rclone and the **libfuse** helper for Android. **John Wu (@topjohnwu)** and Magisk contributors provide root access and the boot-script mechanism. [rclone authors](https://rclone.org/authors/) · [Termux packages](https://github.com/termux/termux-packages) · [libfuse](https://github.com/libfuse/libfuse) · [Magisk](https://github.com/topjohnwu/Magisk) |
 
 The pinned rclone release uses **go-smb2** and **bazil.org/fuse** for this mount. Windows supplies file sharing and SQLite, Android supplies the platform tools and media index, and Google Photos performs the backup. [Go SMB client](https://github.com/cloudsoda/go-smb2) · [Go FUSE bindings](https://github.com/bazil/fuse) · [Windows SMB](https://learn.microsoft.com/en-us/windows-server/storage/file-server/file-server-smb-overview) · [SQLite](https://sqlite.org/) · [Android Platform Tools](https://developer.android.com/tools/releases/platform-tools) · [Android MediaStore](https://developer.android.com/reference/android/provider/MediaStore)
+
+The welcome landscape was generated with OpenAI's built-in image generation. The Pixel Backup app icon is original vector artwork.
+
+<details>
+<summary>Welcome artwork and generation prompt</summary>
+
+[Welcome landscape](windows/app/Welcome.jpg) · [Editable app icon](windows/app/PixelBackup.svg)
+
+> A panoramic fine-art landscape photograph for the welcome panel of Pixel Backup, a Windows photography backup app. A mirror-still alpine lake in the Dolomites at first morning light, dark evergreen conifers and their shadowed reflections on the left, layers of blue-green mountains and one sunlit pale stone peak toward the right, soft apricot light on the rock, moody warm mist. Wide 3:1 horizontal landscape composition, camera on shore. Reserve the left 48% as naturally deep forest-green low-contrast negative space with dark water and tree silhouettes so white UI type can be overlaid. The photographic focus, warm light, distant peaks, and an interesting arc of shoreline are concentrated on the right 52%. Finely detailed, subtle analog film texture, premium nature photography. Full bleed, real landscape, no words, no UI, no frames, no logos, no people.
+
+</details>
