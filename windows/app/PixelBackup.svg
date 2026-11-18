@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Pixel Backup</title>
+  <path fill="#172833" d="M16 2H48Q62 2 62 16V48Q62 62 48 62H16Q2 62 2 48V16Q2 2 16 2Z"/>
+  <path fill="#4B80F0" d="M13 15H25Q27 15 28.5 16.5L33 21H47Q51 21 51 25V42Q51 46 47 46H13Q9 46 9 42V19Q9 15 13 15Z"/>
+  <path fill="#67D4BF" d="M19 25H51Q55 25 55 29V46Q55 50 51 50H19Q15 50 15 46V29Q15 25 19 25Z"/>
+  <path fill="#172833" d="M21 44L28.4 36Q29 35.3 29.6 36L33.2 39.8L37.3 35Q38 34.1 38.7 35L47 44Z"/>
+  <circle fill="#172833" cx="45.5" cy="32" r="2.5"/>
+</svg>

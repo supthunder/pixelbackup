@@ -1,0 +1,42 @@
+name: Windows desktop
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Build the app and load its packaged window
+        run: |
+          $exe = .\windows\Build-PixelBackup.ps1 -Destination .\dist\app -PackagePath .\dist\Pixel-Backup-Windows-x64.zip
+          Add-Type -AssemblyName PresentationFramework
+          $assembly = [Reflection.Assembly]::LoadFrom($exe)
+          $window = $assembly.GetType('PixelBackup.Program').GetMethod('LoadWindow').Invoke($null, @())
+          if (-not $window.Icon -or -not $window.Content) { throw 'The installed desktop window is missing its icon or content.' }
+          $window.Close()
+
+      - name: Test duplicate review and Takeout imports
+        run: .\tests\Test-DuplicateReview.ps1
+
+      - name: Save the portable app and SHA-256 checksum
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Pixel-Backup-Windows-x64
+          path: dist/Pixel-Backup-Windows-x64.zip*
+          if-no-files-found: error
+          compression-level: 0

@@ -36,6 +36,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'PixelShares.ps1')
 
 function Get-ReaderAccount([string]$Account) {
     $parts = $Account -split '\\'
@@ -139,25 +140,18 @@ function Publish-PixelFolder([string]$Folder, [string]$Account, [scriptblock]$On
     $directory = Get-Item -LiteralPath $Folder -Force
     if (-not $directory.PSIsContainer) { throw 'Select an existing directory.' }
     $Folder = $directory.FullName
-    $inspect = "Inspect session shares with Get-SmbShare -IncludeHidden | Where-Object Name -like 'PixelBackup-*' | Format-List Name,ScopeName,Path,Description,Temporary. A temporary share expires at the next Windows restart."
-    $existing = @(Get-SmbShare -IncludeHidden | Where-Object { $_.Name -imatch '^PixelBackup-[0-9a-f]{32}$' })
+    $inspect = "Inspect session shares with Get-SmbShare -IncludeHidden | Where-Object Name -like 'PixelBackup*' | Format-List Name,ScopeName,Path,Description,Temporary. A temporary share expires at the next Windows restart."
+    $existing = @(Get-PixelSessionShares)
     if ($existing.Count -gt 0) {
         throw "A session share already exists ($($existing.Name -join ', ')). $inspect"
     }
 
     $shareName = 'PixelBackup-' + [guid]::NewGuid().ToString('N')
-    $ownershipTag = "PixelBackup picker $([guid]::NewGuid().ToString('N'))"
-    $scope = '*'  # The default scope on a Windows PC, including a partially completed creation.
+    $registration = New-PixelShareRegistration $shareName $Folder
     try {
-        $share = New-SmbShare -Name $shareName -Path $Folder -ReadAccess $Account -Temporary -CachingMode None -Description $ownershipTag
-        $scope = $share.ScopeName
-        $access = @(Get-SmbShareAccess -InputObject $share)
-        if ($access.Count -ne 1 -or $access[0].AccountName -ne $Account -or
-            $access[0].AccessControlType -ne 'Allow' -or $access[0].AccessRight -ne 'Read') {
-            throw 'Windows reported unexpected share permissions. Closing the share.'
-        }
+        $share = Open-PixelReadShare $registration $Account
         $address = "\\$env:COMPUTERNAME\$shareName"
-        Write-Host "$address shares $Folder read-only for $Account (scope $scope, $ownershipTag)."
+        Write-Host "$address shares $Folder read-only for $Account (scope $($registration.Scope), $($registration.Tag))."
         if ($OnShareReady) {
             & $OnShareReady $share
         } else {
@@ -165,13 +159,8 @@ function Publish-PixelFolder([string]$Folder, [string]$Account, [scriptblock]$On
         }
     } finally {
         try {
-            $current = @(Get-SmbShare -IncludeHidden | Where-Object { $_.Name -eq $shareName -and $_.ScopeName -eq $scope })
-            if ($current.Count -eq 1 -and $current[0].Description -ceq $ownershipTag -and $current[0].Path -eq $Folder) {
-                Remove-SmbShare -InputObject $current[0] -Force
-                Write-Host "Stopped sharing $Folder."
-            } elseif ($current.Count -gt 0) {
-                Write-Warning "The current share differs from this session. $inspect"
-            }
+            Close-PixelReadShare $registration
+            Write-Host "Stopped sharing $Folder."
         } catch {
             throw "Could not verify or finish cleanup of $shareName. $($_.Exception.Message) $inspect"
         }

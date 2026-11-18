@@ -113,11 +113,19 @@ while [ "$stop" -eq 0 ]; do
     # No selected directory or media files are traversed during discovery.
     if shares=$(list_pc_shares 3>&1); then
         delay=5
-        matches=$(printf '%s\n' "$shares" | LC_ALL=C grep -E '^PixelBackup-[0-9a-f]{32}$')
+        matches=$(printf '%s\n' "$shares" | LC_ALL=C grep -E '^PixelBackup(Plan)?-[0-9a-f]{32}$')
         case "$matches" in
             '') announce "Waiting for a folder selection on the PC." ;;
             *'
 '*) announce "Multiple folder selections are visible. Close the extra picker sessions." ;;
+            PixelBackupPlan-*)
+                data_share=PixelBackupData-${matches#PixelBackupPlan-}
+                if printf '%s\n' "$shares" | grep -Fxq "$data_share"; then
+                    wanted=$matches
+                else
+                    announce "Waiting for the data share paired with this selection."
+                fi
+                ;;
             *) wanted=$matches ;;
         esac
     else

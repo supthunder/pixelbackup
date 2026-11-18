@@ -14,6 +14,24 @@ esac
 case "$name" in
     ''|-*|*[!A-Za-z0-9_.-]*) die "Use a remote name from the private config." ;;
 esac
+plan_remote=
+share=${remote#*:}
+# SMB share names are case-insensitive. Never open a reserved data share
+# unfiltered, including when someone invokes this helper by hand.
+while [ "${share#/}" != "$share" ]; do share=${share#/}; done
+case "$share" in
+    [Pp][Ii][Xx][Ee][Ll][Bb][Aa][Cc][Kk][Uu][Pp][Dd][Aa][Tt][Aa]-*|\
+    [Pp][Ii][Xx][Ee][Ll][Bb][Aa][Cc][Kk][Uu][Pp][Pp][Ll][Aa][Nn]-*)
+        case "$share" in
+            PixelBackupData-*|PixelBackupPlan-*) session=${share#*-} ;;
+            *) die "Use the exact PixelBackup session share name." ;;
+        esac
+        case "$session" in ''|*[!0123456789abcdef]*) die "Invalid PixelBackup session ID." ;; esac
+        [ "${#session}" -eq 32 ] || die "Invalid PixelBackup session ID."
+        plan_remote="$name:PixelBackupPlan-$session"
+        remote="$name:PixelBackupData-$session"
+        ;;
+esac
 config=${PIXEL_RCLONE_CONFIG:-/data/adb/pixel-backup/rclone.conf}
 case "$config" in /*) ;; *) die "PIXEL_RCLONE_CONFIG must be absolute." ;; esac
 
@@ -90,6 +108,7 @@ for path in $views; do
 done
 
 anchor=$(mktemp -d /mnt/pixel-backup.XXXXXX) || die "Could not create a private mount point."
+plan_dir=
 child=
 created_id=
 stop=0
@@ -121,6 +140,10 @@ cleanup() {
         kill -TERM "$child" 2>/dev/null || :
         wait "$child" 2>/dev/null || :
     fi
+    if [ -n "$plan_dir" ]; then
+        rm -f "$plan_dir/files.txt" "$plan_dir/files.sha256" || result=1
+        rmdir "$plan_dir" || result=1
+    fi
     rmdir "$anchor" || result=1
     if [ -n "$created_id" ] && [ "$(identity "$write_view" 2>/dev/null)" = "$created_id" ]; then
         rmdir "$write_view" || result=1
@@ -130,6 +153,45 @@ cleanup() {
 trap 'cleanup "$?"' EXIT
 trap 'stop=1' HUP INT TERM
 
+fetch_plan_file() {
+    # Address only the one regular file at the root. One extra byte lets us
+    # reject an oversized file without buffering the rest on the phone.
+    rclone cat "$plan_remote" --include "/$1" --max-depth 1 --count "$2" \
+        --config "$config" --ask-password=false --contimeout 5s --timeout 15s \
+        --retries 1 --low-level-retries 1 --log-level ERROR >"$plan_dir/$1"
+}
+
+set --
+if [ -n "$plan_remote" ]; then
+    [ "$(stat -f -c %T /mnt)" = tmpfs ] || die "The selection plan needs a private tmpfs at /mnt."
+    plan_dir=$(mktemp -d /mnt/pixel-backup-plan.XXXXXX) || die "Cannot create private space for the selection."
+    manifest="$plan_dir/files.txt"
+    fetch_plan_file files.sha256 66 || die "Cannot read the selection checksum."
+    [ "$(wc -c <"$plan_dir/files.sha256")" -eq 65 ] || die "Invalid selection checksum."
+    fetch_plan_file files.txt 33554433 || die "Cannot read the selection list."
+    size=$(wc -c <"$manifest") || die "Cannot measure the selection list."
+    if [ "$size" -eq 0 ] || [ "$size" -gt 33554432 ]; then die "The selection list must be between 1 byte and 32 MiB."; fi
+    sum=$(sha256sum "$manifest") || die "Cannot hash the selection list."
+    printf '%s\n' "${sum%% *}" | cmp -s - "$plan_dir/files.sha256" || die "The selection checksum does not match."
+
+    [ "$(tail -c 1 "$manifest" | od -An -tu1 | tr -d ' \n')" = 10 ] || die "End each selection path with LF."
+    [ "$(head -c 3 "$manifest" | od -An -tx1 | tr -d ' \n')" != efbbbf ] || die "Use UTF-8 without a BOM."
+    # The last byte is LF, so a NUL anywhere makes a second NUL-delimited record.
+    [ "$(LC_ALL=C grep -azc '^' "$manifest")" = 1 ] || die "A selection path contains a NUL."
+    # Android 10 toybox iconv copies invalid input by default. With -c the
+    # round trip omits invalid bytes, which the byte comparison rejects.
+    iconv -c -f UTF-8 -t UTF-16LE "$manifest" | iconv -c -f UTF-16LE -t UTF-8 |
+        cmp -s - "$manifest" || die "The selection list is not valid UTF-8."
+    c1=$(printf '\302[\200-\237]')
+    forbidden='\\|^$|^/|/$|//|(^|/)\.\.?(/|$)|^[A-Za-z]:|[[:cntrl:]]'
+    LC_ALL=C grep -aEq "$forbidden|$c1" "$manifest"
+    [ "$?" -eq 1 ] || die "Use nonempty normalized relative paths in the selection."
+    # rclone's standard encoder preserves Windows Unicode names verbatim when
+    # used on both sides of its SMB name conversion.
+    set -- --files-from-raw "$manifest" --smb-encoding Slash,Ctl,Del,Dot
+fi
+[ "$stop" -eq 0 ] || exit 0
+
 if [ ! -d "$write_view" ]; then
     mkdir "$write_view" || die "Cannot create the empty PixelBackup folder."
     created_id=$(identity "$write_view") || die "Cannot identify the new folder."
@@ -138,7 +200,7 @@ for path in $views; do [ -d "$path" ] || die "Folder missing from $path."; done
 
 # Own the child for the lifetime of this invocation. Isolate it from terminal
 # signals so open app handles can drain before we shut down the FUSE server.
-setsid rclone mount "$remote" "$anchor" --config "$config" --devname "$tag" \
+setsid rclone mount "$remote" "$anchor" "$@" --config "$config" --devname "$tag" \
     --allow-other --read-only --vfs-cache-mode off --dir-cache-time 15s \
     --umask 022 --dir-perms 0555 --file-perms 0444 \
     --daemon=false --ask-password=false --log-level ERROR 9>&- </dev/null &

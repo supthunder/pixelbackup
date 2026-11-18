@@ -2,7 +2,7 @@
 #Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-    Prepare the Windows reader and a local photo library for Pixel Backup Gang.
+    Prepare the Windows reader and a local photo library for Pixel Backup.
 .EXAMPLE
     .\windows\Initialize-PixelReader.ps1 -LibraryPath 'D:\Photo Library'
 .NOTES
@@ -55,7 +55,7 @@ function Get-LibraryDirectory([string]$Path) {
 
 function Confirm-DedicatedReader($Reader, [string]$Description) {
     if (-not $Reader.Enabled -or $Reader.PrincipalSource -ne 'Local' -or
-        $Reader.Description -cne $Description -or
+        $Reader.Description -cnotin @($Description, 'Pixel Backup Gang dedicated reader') -or
         $Reader.SID.IsWellKnown([Security.Principal.WellKnownSidType]::AccountGuestSid) -or
         $Reader.SID.IsWellKnown([Security.Principal.WellKnownSidType]::AccountAdministratorSid)) {
         throw 'PixelReader already exists and is disabled or differs from the dedicated account created by this script.'
@@ -101,7 +101,7 @@ if ($library.FileSystem -eq 'NTFS') {
     }
 }
 
-$description = 'Pixel Backup Gang dedicated reader'
+$description = 'Pixel Backup dedicated reader'
 $reader = Get-LocalUser | Where-Object Name -eq 'PixelReader'
 $accountCreated = $false
 if ($reader) {
