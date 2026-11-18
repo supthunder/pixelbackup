@@ -1,0 +1,10 @@
+.gradle/
+local.properties
+*.iml
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pk8
+*.dpapi
+signing.properties

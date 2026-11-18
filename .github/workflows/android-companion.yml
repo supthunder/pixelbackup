@@ -1,0 +1,114 @@
+name: Android companion
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'android_companion/**'
+      - '.github/workflows/android-companion.yml'
+  pull_request:
+    paths:
+      - 'android_companion/**'
+      - '.github/workflows/android-companion.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-companion-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Test and verify unsigned APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: android_companion
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+          cache-dependency-path: |
+            android_companion/**/*.gradle*
+            android_companion/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Verify Gradle 8.11.1 wrapper and distribution pin
+        run: |
+          # Published by Gradle at https://gradle.org/release-checksums/
+          echo '2db75c40782f5e8ba1fc278a5574bab070adccb2d21ca5a6e5ed840888448046  gradle/wrapper/gradle-wrapper.jar' | sha256sum --check --strict
+          grep -Fx 'distributionSha256Sum=f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6' gradle/wrapper/gradle-wrapper.properties
+
+      - name: Prepare Android SDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Test, lint and assemble the release variant
+        run: bash ./gradlew --no-daemon --stacktrace :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease
+
+      - name: Check test results and packaged app
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          suites = [ET.parse(p).getroot() for p in Path('app/build/test-results/testReleaseUnitTest').glob('TEST-*.xml')]
+          ran = sum(int(s.get('tests', '0')) - int(s.get('skipped', '0')) for s in suites)
+          if ran < 1:
+              raise SystemExit('No Android companion unit tests ran.')
+          if any(int(s.get('failures', '0')) or int(s.get('errors', '0')) for s in suites):
+              raise SystemExit('Companion unit test reports contain failures.')
+          print(f'{ran} companion unit tests passed.')
+          PY
+
+          apk=app/build/outputs/apk/release/app-release-unsigned.apk
+          tools="$ANDROID_HOME/build-tools/35.0.0"
+          unzip -tq "$apk"
+          "$tools/zipalign" -c -P 16 4 "$apk"
+          "$tools/aapt2" dump badging "$apk" > "$RUNNER_TEMP/companion-badging.txt"
+          info="$RUNNER_TEMP/companion-badging.txt"
+          grep -F "package: name='dev.supthunder.pixelbackup' " "$info"
+          grep -Ex "(minSdkVersion|sdkVersion):'29'" "$info"
+          grep -Fx "targetSdkVersion:'35'" "$info"
+          grep -E "^launchable-activity: name='[^']+'" "$info"
+          if grep -q '^application-debuggable' "$info"; then
+            echo 'The release variant is debuggable.' >&2
+            exit 1
+          fi
+          "$tools/aapt2" dump permissions "$apk" > "$RUNNER_TEMP/companion-permissions.txt"
+          sensitive='INTERNET|READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE|MANAGE_EXTERNAL_STORAGE'
+          sensitive+='|WRITE_MEDIA_STORAGE|MANAGE_MEDIA|ACCESS_MEDIA_LOCATION|READ_MEDIA_[A-Z_]+'
+          if grep -E "android[.]permission[.]($sensitive)([^[:alnum:]_]|$)" "$RUNNER_TEMP/companion-permissions.txt"; then
+            echo 'The companion requests Internet, shared-storage or media-library access.' >&2
+            exit 1
+          fi
+          "$tools/apksigner" version > /dev/null
+          if "$tools/apksigner" verify "$apk" > /dev/null 2>&1; then
+            echo 'The verification artifact contains an APK signature.' >&2
+            exit 1
+          fi
+          cd "$(dirname "$apk")"
+          sha256sum app-release-unsigned.apk | tee app-release-unsigned.apk.sha256
+
+      - name: Archive unsigned verification build from main
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Pixel-Backup-Companion-unsigned
+          path: |
+            android_companion/app/build/outputs/apk/release/app-release-unsigned.apk
+            android_companion/app/build/outputs/apk/release/app-release-unsigned.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

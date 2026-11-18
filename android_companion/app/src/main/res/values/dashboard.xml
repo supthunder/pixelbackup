@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="dash_paper">#F7F7F2</color>
+    <color name="dash_ink">#182A24</color>
+    <color name="dash_muted">#506159</color>
+    <color name="dash_line">#CDD8CE</color>
+    <color name="dash_forest">#142F27</color>
+    <color name="dash_primary">#175942</color>
+    <color name="dash_mint">#BAEBC9</color>
+    <color name="dash_light_text">#E3F1E6</color>
+
+    <string name="dash_title">Pixel Backup</string>
+    <string name="dash_access">Data sources</string>
+    <string name="dash_rate_label">Wi-Fi send rate</string>
+    <string name="dash_source_scope">Includes all outgoing Wi-Fi traffic from Google Photos.</string>
+    <string name="dash_wait_meter">Waiting for a meter reading.</string>
+    <string name="dash_wait_photos">Check Google Photos for the current count, or connect Photos status in Data sources.</string>
+    <string name="dash_missing">—</string>
+    <string name="dash_unavailable">Unavailable</string>
+    <string name="dash_minute">60 seconds ago</string>
+    <string name="dash_now">Now</string>
+    <string name="dash_queue">Backup queue</string>
+    <string name="dash_remaining">Items remaining</string>
+    <string name="dash_eta">Estimated time</string>
+    <string name="dash_open_photos">Open Google Photos</string>
+    <string name="dash_record">Enter remaining count</string>
+    <string name="dash_notices_title">Google Photos status</string>
+    <string name="dash_meter_title">Live Wi-Fi meter</string>
+    <string name="dash_photos_description">Notification access lets Pixel Backup read backup progress when Google Photos includes it in a notification.</string>
+    <string name="dash_meter_description">With your approval, Pixel Backup uses Magisk for this session to read the Wi-Fi bytes sent by Google Photos.</string>
+    <string name="dash_connect_photos">Connect Photos status</string>
+    <string name="dash_manage_photos">Manage notification access</string>
+    <string name="dash_connect_meter">Connect live meter</string>
+    <string name="dash_stop_meter">Stop live meter</string>
+    <string name="dash_done">Done</string>
+    <string name="dash_chart_title">Google Photos Wi-Fi send rate during the last minute</string>
+    <string name="dash_chart_empty">No readings in the last minute.</string>
+    <string name="dash_chart_summary">Latest measured rate %1$s. Highest measured rate %2$s.</string>
+    <string name="dash_rate_bytes">%1$s per second</string>
+
+    <style name="DashText" parent="@android:style/Widget.Material.Light.TextView">
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:textColor">@color/dash_ink</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+    <style name="DashCaption" parent="DashText">
+        <item name="android:textColor">@color/dash_muted</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+    <style name="DashHeading" parent="DashText">
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">21sp</item>
+    </style>
+    <style name="DashValue" parent="DashText">
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:fontFeatureSettings">tnum</item>
+        <item name="android:textSize">24sp</item>
+    </style>
+    <style name="DashAction" parent="@android:style/Widget.Material.Light.Button.Borderless">
+        <item name="android:textAllCaps">false</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:letterSpacing">0</item>
+        <item name="android:textColor">@color/dash_primary</item>
+        <item name="android:minWidth">48dp</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
+        <item name="android:paddingTop">6dp</item>
+        <item name="android:paddingBottom">6dp</item>
+        <item name="android:stateListAnimator">@null</item>
+        <item name="android:background">@drawable/dash_quiet_button</item>
+    </style>
+    <style name="DashPrimaryAction" parent="DashAction">
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:background">@drawable/dash_primary_button</item>
+    </style>
+    <style name="DashMeterAction" parent="DashAction">
+        <item name="android:textColor">@color/dash_mint</item>
+        <item name="android:background">@drawable/dash_meter_button</item>
+    </style>
+</resources>

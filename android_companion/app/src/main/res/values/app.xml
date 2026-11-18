@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Pixel Backup</string>
+    <string name="notification_source">Pixel Backup</string>
+    <style name="PixelBackupTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:colorAccent">#11634C</item>
+        <item name="android:windowBackground">#F5F7F2</item>
+        <item name="android:statusBarColor">#F5F7F2</item>
+        <item name="android:navigationBarColor">#F5F7F2</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+    <string name="empty_metric">—</string>
+    <string name="meter_off">Meter off</string>
+    <string name="meter_connecting">Waiting for Magisk approval on this Pixel…</string>
+    <string name="meter_collecting">Measuring Wi-Fi traffic…</string>
+    <string name="meter_observed_bytes">%1$s sent while measuring</string>
+    <string name="meter_missing_photos">Install or enable Google Photos on this Pixel.</string>
+    <string name="meter_denied">Magisk access is unavailable. You can reconnect the meter.</string>
+    <string name="meter_unavailable">This phone’s kernel does not expose the supported Wi-Fi counter.</string>
+    <string name="meter_timeout">The meter timed out. Unlock the Pixel and try again.</string>
+    <string name="rate_access_description">Magisk grants superuser access for the live meter. Pixel Backup uses it to read the number of Wi-Fi bytes sent by Google Photos. Sampling stops when you leave the dashboard.</string>
+    <string name="photos_access_description">Android grants access to notifications from all apps. Pixel Backup reads only recognized Google Photos backup updates. Counts stay on this phone.</string>
+    <string name="queue_disconnected">Connect Photos status, or enter the count you see in Google Photos.</string>
+    <string name="queue_waiting">Waiting for a backup notification from Google Photos. You can also enter a count.</string>
+    <string name="queue_reconnecting">Android is connecting Photos status. You can also enter a count.</string>
+    <string name="queue_last_update">Last reported by Google Photos %1$s ago. Open Photos for its current count.</string>
+    <string name="queue_stale">Google Photos has no recent status update. You can check Photos and enter its current count.</string>
+    <string name="queue_active">Google Photos is backing up. An estimate needs a few changes in its remaining count.</string>
+    <string name="queue_estimated">Based on recent changes in the Google Photos queue. Videos can take longer.</string>
+    <string name="queue_active_no_count">Google Photos reports a backup in progress. Open Photos to check how many items remain.</string>
+    <string name="queue_paused">Google Photos reports a pause. Open Photos for details.</string>
+    <string name="queue_complete">Google Photos reports that its backup queue is complete.</string>
+    <string name="queue_paused_value">Paused</string>
+    <string name="queue_complete_value">Complete</string>
+    <string name="manual_now">Your count, just entered.</string>
+    <string name="manual_aged">Your count from %1$s ago.</string>
+    <string name="manual_another">Enter a lower count after 30 seconds for an estimate.</string>
+    <string name="manual_estimated">Estimate at your last entry.</string>
+    <string name="manual_stale">Enter the current Photos count to refresh it.</string>
+    <string name="manual_zero">Open Google Photos to confirm backup.</string>
+    <string name="count_title">Enter remaining count</string>
+    <string name="count_prompt">Enter the items remaining in Google Photos. Use counts from the same backup. Clear your entries when you start another.</string>
+    <string name="count_hint">Items remaining</string>
+    <string name="count_save">Save count</string>
+    <string name="count_clear">Clear entries</string>
+    <string name="count_error">Enter a whole number from 0 to 2,147,483,647.</string>
+    <string name="photos_settings_unavailable">Open Settings and search for Notification access.</string>
+    <string name="photos_unavailable">Google Photos is unavailable on this phone.</string>
+    <string name="meter_consent_title">Connect the live meter?</string>
+    <string name="meter_consent_action">Continue to Magisk</string>
+    <string name="photos_consent_title">Connect Photos status?</string>
+    <string name="photos_consent_action">Open notification access</string>
+    <string name="time_under_minute">&lt;1 min</string>
+    <string name="time_minutes">%1$d min</string>
+    <string name="time_hours">%1$d hr</string>
+    <string name="time_hours_minutes">%1$d hr %2$d min</string>
+    <string name="time_days">%1$d d</string>
+    <string name="time_days_hours">%1$d d %2$d hr</string>
+    <string name="estimated_time">≈ %1$s</string>
+    <string name="byte_amount">%1$s %2$s</string>
+    <string name="per_second">%1$s/s</string>
+</resources>

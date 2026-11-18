@@ -4,7 +4,9 @@ Back up a Windows photo folder through the Google Photos app on a rooted, first-
 
 Vivek Revankar (@master-hax) developed the original Pixel storage mount that inspired this app. [Original project](https://github.com/master-hax/pixel-backup-gang) · [Contributors and references](#credits)
 
-**[Download Pixel Backup for Windows](https://github.com/supthunder/pixelbackup/releases/latest/download/Pixel-Backup-Windows-x64.zip)** · [SHA-256 checksum](https://github.com/supthunder/pixelbackup/releases/latest/download/Pixel-Backup-Windows-x64.zip.sha256) · [Release notes](https://github.com/supthunder/pixelbackup/releases)
+**[Download Pixel Backup for Windows](https://github.com/supthunder/pixelbackup/releases/download/v1.1.0/Pixel-Backup-Windows-x64.zip)** · [SHA-256 checksum](https://github.com/supthunder/pixelbackup/releases/download/v1.1.0/Pixel-Backup-Windows-x64.zip.sha256) · [Windows release notes](https://github.com/supthunder/pixelbackup/releases/tag/v1.1.0)
+
+**[Download the Android companion](https://github.com/supthunder/pixelbackup/releases/download/companion-v1.0.0/Pixel-Backup-Android.apk)** · [APK checksum](https://github.com/supthunder/pixelbackup/releases/download/companion-v1.0.0/Pixel-Backup-Android.apk.sha256) · [Monitor a backup on your Pixel](docs/ANDROID_COMPANION.md)
 
 ![Pixel Backup home on Windows, with Choose folder and Drop a folder here over an alpine lake, plus links to Library and Pixel setup](docs/evidence/desktop-home.png)
 
@@ -26,6 +28,10 @@ Vivek Revankar (@master-hax) developed the original Pixel storage mount that ins
 4. **Verify and finish.** In Google Photos, check each test item's **Details** for **Backed up**, **Original quality** and its account-storage message. Once backup finishes, close the previews and use **Stop sharing** on Windows. Select **Confirm backup** after the share closes cleanly. Check the profile and file count before recording the batch. Windows can observe reads from the Pixel. Google Photos supplies the upload result. [Google Photos backup checks](https://support.google.com/photos/answer/6193313?co=GENIE.Platform%3DAndroid&hl=en)
 
 ![The Windows review found four files. Two are ready to share, one matches a Takeout file and one is a renamed copy in the folder](docs/evidence/desktop-app.png)
+
+## Follow progress on the Pixel
+
+Open **Pixel Backup** on the phone to follow the Google Photos queue. With notification access, the companion can read the remaining count that Photos publishes. You can also enter the count from Photos yourself. Falling counts let it estimate time remaining. On a rooted original Pixel, the live meter shows how fast Google Photos is sending data over Wi-Fi and how many bytes it sent while you were measuring. [Android setup and permissions](docs/ANDROID_COMPANION.md) · [See the live meter on an original Pixel](docs/evidence/android-companion-live.png)
 
 ## What the original Pixel actually backed up
 

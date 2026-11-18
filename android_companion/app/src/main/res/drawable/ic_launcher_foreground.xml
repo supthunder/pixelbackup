@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pixel Backup's original photo prints, fitted to Android's 66dp adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="1.17"
+        android:scaleY="1.24"
+        android:translateX="16.13"
+        android:translateY="11.5">
+        <path
+            android:fillColor="#84B79B"
+            android:pathData="M11.63,18.5 L41.76,12.09 A3.6,3.6 0,0 1,46.03,14.87 L46.91,19 H19.5 A6.5,6.5 0,0 0,13,25.5 V42.25 L8.86,22.77 A3.6,3.6 0,0 1,11.63,18.5 Z" />
+        <!-- The mountain, sun and gap between prints stay open when the launcher applies a theme. -->
+        <path
+            android:fillColor="#D5F2D8"
+            android:fillType="evenOdd"
+            android:pathData="M19.5,21.5 H51.5 A4,4 0,0 1,55.5,25.5 V47 A4,4 0,0 1,51.5,51 H19.5 A4,4 0,0 1,15.5,47 V25.5 A4,4 0,0 1,19.5,21.5 Z M20.5,44 L28,34.3 q1.1,-1.4 2.2,0 l4.7,5.5 4,-4.6 q1,-1.2 2,0 l7.6,8.8 Z M49.1,29.5 a3.6,3.6 0,1 1,-7.2,0 a3.6,3.6 0,1 1,7.2,0 Z" />
+    </group>
+</vector>

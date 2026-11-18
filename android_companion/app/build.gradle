@@ -1,0 +1,47 @@
+plugins {
+    id 'com.android.application'
+}
+
+def signingVariables = ['KEYSTORE', 'KEY_ALIAS', 'STORE_PASSWORD', 'KEY_PASSWORD']
+def releaseKeys = signingVariables.collectEntries { name ->
+    [(name): providers.environmentVariable("PIXELBACKUP_${name}").orNull]
+}
+def signRelease = releaseKeys.values().every { it }
+if (!signRelease && releaseKeys.values().any { it != null }) {
+    throw new GradleException('Release signing requires PIXELBACKUP_KEYSTORE, PIXELBACKUP_KEY_ALIAS, PIXELBACKUP_STORE_PASSWORD and PIXELBACKUP_KEY_PASSWORD together.')
+}
+
+android {
+    namespace 'dev.supthunder.pixelbackup'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+
+    defaultConfig {
+        applicationId 'dev.supthunder.pixelbackup'
+        minSdk 29
+        targetSdk 35
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    if (signRelease) {
+        signingConfigs {
+            release {
+                storeFile rootProject.file(releaseKeys.KEYSTORE)
+                keyAlias releaseKeys.KEY_ALIAS
+                storePassword releaseKeys.STORE_PASSWORD
+                keyPassword releaseKeys.KEY_PASSWORD
+            }
+        }
+        buildTypes.release.signingConfig = signingConfigs.release
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}
