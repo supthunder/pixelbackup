@@ -2,6 +2,8 @@
 
 Back up a Windows photo folder through the Google Photos app on your original Pixel. Select an album on the PC, review exact duplicates and share it over Wi-Fi. The phone reads the selected originals from Windows as it needs them. A library larger than the phone's free space can stay on the PC.
 
+Vivek Revankar (@master-hax) developed the original Pixel storage mount that inspired this app. [Original project](https://github.com/master-hax/pixel-backup-gang) · [Contributors and references](#credits)
+
 **[Download Pixel Backup for Windows](https://github.com/supthunder/pixelbackup/releases/latest/download/Pixel-Backup-Windows-x64.zip)** · [SHA-256 checksum](https://github.com/supthunder/pixelbackup/releases/latest/download/Pixel-Backup-Windows-x64.zip.sha256) · [Release notes](https://github.com/supthunder/pixelbackup/releases)
 
 ![The Windows app found four sample files, skipped a renamed copy and a Takeout match, and queued a JPEG and an MP4](docs/evidence/desktop-app.png)
@@ -25,11 +27,13 @@ Back up a Windows photo folder through the Google Photos app on your original Pi
 
 ## What the original Pixel actually backed up
 
-In a hardware test with a first-generation Pixel on stock Android 10 build `QP1A.191005.007.A3`, Windows recorded signed SMB 3.1.1 reads of a fresh JPEG and MP4 over Wi-Fi. Android read both files byte-for-byte from the PC. Google Photos automatically backed them up and reported zero account storage for each. Both items reopened after the share was disconnected. These receipts are from the earlier Windows picker and phone mount test. [Test details](docs/STORAGE_REVIEW.md#on-device-result)
+On a first-generation Pixel running stock Android 10 build `QP1A.191005.007.A3`, the desktop app selected two of four sample files. The Pixel read **Alpine Lake.jpg** and **Evening Coast #2 [blue hour].mp4** byte-for-byte and denied access to the renamed JPEG and the file matched by Takeout. Google Photos automatically backed up both selected files and reported zero account storage for each. This test ran the released selection through a USB debugging tunnel. [Filtered backup test](docs/STORAGE_REVIEW.md#filtered-desktop-backup)
 
 | JPEG from Windows | MP4 from Windows |
 | --- | --- |
-| ![Google Photos details for the test JPEG show Backed up, Original quality and no account storage used](docs/evidence/wifi-jpeg.png) | ![Google Photos details for the test MP4 show Backed up, Original quality and no account storage used](docs/evidence/wifi-video.png) |
+| ![Google Photos shows Alpine Lake.jpg backed up in Original quality with zero account storage used](docs/evidence/filtered-jpeg.png) | ![Google Photos shows Evening Coast MP4 backed up in Original quality with zero account storage used](docs/evidence/filtered-video.png) |
+
+The Pixel also discovered the two-file selection automatically on an authenticated SMB test server over USB. In the earlier Wi-Fi test, Windows recorded signed SMB 3.1.1 reads from this Pixel for a separate JPEG and MP4. Both reopened in Google Photos after the share disconnected. [Wi-Fi test and screenshots](docs/STORAGE_REVIEW.md#on-device-result)
 
 Google documents unlimited Original quality for the first-generation Pixel. Its original hardware offer describes media taken with the phone. Check a fresh imported item on your own account before starting a large library. Mounting removes the deliberate full-file copy to phone storage. Android and Google Photos can still write indexes, thumbnails and temporary files. [Google quality policy](https://support.google.com/photos/answer/6220791?co=GENIE.Platform%3DAndroid&hl=en) · [Original hardware notes](https://support.google.com/pixelphone/answer/16043605?hl=en) · [Storage review and alternatives](docs/STORAGE_REVIEW.md)
 

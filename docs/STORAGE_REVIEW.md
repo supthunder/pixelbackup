@@ -35,6 +35,16 @@ After the share closed, invoking the installed Magisk boot script relaunched the
 
 An earlier trial sent SMB through a USB debugging tunnel to Samba on the PC. It also backed up a 44,481-byte JPEG and a 190,906-byte MP4. Both trials used small samples. Large-file throughput and total internal flash writes from Android and Photos remain unmeasured. [USB-tunneled JPEG receipt](evidence/pixel-jpeg.png) · [USB-tunneled MP4 receipt](evidence/pixel-video.png)
 
+### Filtered desktop backup
+
+The released Pixel Backup 1.0 desktop app scanned four sample paths on the same PC. A small Takeout ZIP supplied one known fingerprint. The app selected **Alpine Lake.jpg** (123,552 bytes) and **Evening Coast #2 [blue hour].mp4** (25,109 bytes). It skipped **Copies/Lake Print.jpg**, a byte-identical rename, and **Archive/Golden Sunrise.jpg**, which matched the export. [Desktop scan](evidence/desktop-app.png) · [Takeout comparison](evidence/desktop-library.png)
+
+The Windows sharing approval prompt closed before the app opened a native SMB share for this run. To verify the phone filter independently, the test served all four source files and the release-generated selection list from a read-only WebDAV server bound to PC loopback. USB debugging carried this test connection. The installed mount helper on the physical Pixel used the selection with its SHA-256 checksum. Android read both selected files through `/storage/emulated/0/PixelBackup`, matched their full hashes to Windows and indexed them. Direct reads of both skipped paths failed.
+
+With backup enabled for that device folder, Google Photos showed **Backed up**, **Original quality** and zero account storage for both selected items. The test then detached the mount and removed its USB tunnel. [Alpine Lake JPEG receipt](evidence/filtered-jpeg.png) · [Evening Coast MP4 receipt](evidence/filtered-video.png)
+
+A second run used an authenticated SMB test server on the PC, reachable only through USB. The installed watcher automatically discovered the matching plan and data shares, mounted the same two files with matching hashes and hid both excluded paths. When the server closed, the watcher detached the folder. The Pixel then resumed watching its paired Windows PC with the original credentials.
+
 ## Using a docked drive
 
 Use the scripts from upstream release `0.1.1`. At review time its convenience installer still downloaded `0.0.9`, and the old ext4 script in this fork put SELinux into permissive mode. The newer upstream ext4 script relabels the drive's files while Android enforcement stays on. [Pinned installer](https://github.com/master-hax/pixel-backup-gang/blob/5c86fdf/install.sh) · [Old fork script](https://github.com/supthunder/pixel-backup-gang/blob/3709bbf/scripts/mount_ext4.sh#L40-L42) · [Updated ext4 script](https://github.com/master-hax/pixel-backup-gang/blob/7c7c311/scripts/mount_ext4.sh#L37-L45)
