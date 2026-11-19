@@ -48,7 +48,7 @@ Google documents unlimited Original quality for the first-generation Pixel. Its 
 ## Existing libraries and other storage options
 
 - **Already backed up thousands of files?** Import a Google Photos Takeout ZIP or extracted export into the local profile for that account. By default, the app skips exact SHA-256 matches. Similar pictures, edited files and previously compressed versions can have different bytes. [Comparing an existing library](docs/DUPLICATES.md)
-- **Prefer a USB drive or NAS?** The original project exposes a USB drive’s `the_binding` folder to Photos on a rooted Android 10 phone. Its native NFSv3 route also supports specific Pixel builds using matching boot images. The Windows app's SMB route uses the existing FUSE driver in the stock kernel. [Docked drive and NFS options](docs/STORAGE_REVIEW.md#using-a-docked-drive)
+- **Prefer a USB drive or NAS?** The original project exposes a USB drive’s `the_binding` folder to Photos on a rooted Android 10 phone. Its native NFSv3 route also supports specific Pixel builds using matching boot images. The Windows app's SMB route uses the existing FUSE driver in the stock kernel. [USB drive TODO](TODO.md#back-up-directly-from-a-usb-drive) · [Docked drive and NFS options](docs/STORAGE_REVIEW.md#using-a-docked-drive)
 
 <details>
 <summary>See a Takeout album and year folder resolve to one fingerprint</summary>
