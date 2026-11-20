@@ -113,8 +113,7 @@ function Compile-Desktop([string]$Output, [string[]]$Sources) {
     if (-not [IO.File]::Exists($compiler)) { throw 'The Windows 64-bit .NET Framework compiler is missing.' }
     $arguments = @('/nologo', '/target:winexe', '/platform:x64', '/langversion:5', '/codepage:65001', '/optimize+',
         '/main:PixelBackup.Program', "/out:$Output", '/win32manifest:app.manifest', '/win32icon:PixelBackup.ico',
-        '/resource:MainWindow.xaml,PixelBackup.MainWindow.xaml', '/resource:PixelBackup.ico,PixelBackup.PixelBackup.ico',
-        '/resource:Welcome.jpg,PixelBackup.Welcome.jpg')
+        '/resource:MainWindow.xaml,PixelBackup.MainWindow.xaml', '/resource:PixelBackup.ico,PixelBackup.PixelBackup.ico')
     $references = @('System', 'System.Core', 'System.Configuration', 'System.Data', 'System.Drawing', 'System.IO.Compression',
         'System.IO.Compression.FileSystem', 'System.Management', 'System.Net.Http', 'System.Runtime.Serialization', 'System.Security',
         'System.Web', 'System.Web.Extensions', 'System.Windows.Forms', 'System.Xaml', 'System.Xml', 'System.Xml.Linq',
@@ -187,7 +186,7 @@ $exe = Join-Path $outputDir $exeName
 $receipt = Join-Path $outputDir $receiptName
 $sources = @(Get-ChildItem -LiteralPath $app -File -Filter '*.cs' | Sort-Object Name)
 $buildInputs = @($sources.FullName) + @($PSCommandPath, (Join-Path $app 'MainWindow.xaml'), (Join-Path $app 'PixelBackup.ico'),
-    (Join-Path $app 'Welcome.jpg'), (Join-Path $app 'app.manifest'))
+    (Join-Path $app 'app.manifest'))
 $payload = [ordered]@{ 'Pixel Backup.exe.config' = (Join-Path $app 'App.config') }
 $backend = @(Get-ChildItem -LiteralPath $PSScriptRoot -File | Where-Object { $_.Extension -in '.ps1', '.psm1' -and $_.Name -notmatch '^(Build|Package)-PixelBackup\.psm?1$' })
 $helpFiles = @(Get-ChildItem -LiteralPath (Join-Path $repo 'docs') -Recurse -File | Where-Object { $_.Extension -in '.md', '.png', '.jpg' })

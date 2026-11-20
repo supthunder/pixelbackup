@@ -37,7 +37,7 @@ An earlier trial sent SMB through a USB debugging tunnel to Samba on the PC. It 
 
 ### Filtered desktop backup
 
-The released Pixel Backup 1.0 desktop app scanned four sample paths on the same PC. A small Takeout ZIP supplied one known fingerprint. The app selected **Alpine Lake.jpg** (123,552 bytes) and **Evening Coast #2 [blue hour].mp4** (25,109 bytes). It skipped **Copies/Lake Print.jpg**, a byte-identical rename, and **Archive/Golden Sunrise.jpg**, which matched the export. [Desktop scan](evidence/desktop-app.png) · [Takeout comparison](evidence/desktop-library.png)
+The released Pixel Backup 1.0 desktop app scanned four sample paths on the same PC. A small Takeout ZIP supplied one known fingerprint. The app selected **Alpine Lake.jpg** (123,552 bytes) and **Evening Coast #2 [blue hour].mp4** (25,109 bytes). It skipped **Copies/Lake Print.jpg**, a byte-identical rename, and **Archive/Golden Sunrise.jpg**, which matched the export. [v1.0 desktop scan](https://github.com/supthunder/pixelbackup/blob/v1.0.0/docs/evidence/desktop-app.png) · [v1.0 Takeout comparison](https://github.com/supthunder/pixelbackup/blob/v1.0.0/docs/evidence/desktop-library.png)
 
 The Windows sharing approval prompt closed before the app opened a native SMB share for this run. To verify the phone filter independently, the test served all four source files and the release-generated selection list from a read-only WebDAV server bound to PC loopback. USB debugging carried this test connection. The installed mount helper on the physical Pixel used the selection with its SHA-256 checksum. Android read both selected files through `/storage/emulated/0/PixelBackup`, matched their full hashes to Windows and indexed them. Direct reads of both skipped paths failed.
 

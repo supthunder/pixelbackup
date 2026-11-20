@@ -69,7 +69,7 @@ namespace PixelBackup
 
 
         internal static PlanSession Start(
-            string windowsDirectory, ScanResult scan, bool skipCopies,
+            string windowsDirectory, ScanResult scan,
             CancellationToken token, IProgress<string> progress)
         {
             string script = Path.GetFullPath(Path.Combine(windowsDirectory, "Share-PixelPlan.ps1"));
@@ -78,7 +78,7 @@ namespace PixelBackup
                 throw new IOException("The Windows sharing script must be a regular local file.");
 
             string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            PlanSession session = Prepare(scan, skipCopies, token, progress, localAppData);
+            PlanSession session = Prepare(scan, token, progress, localAppData);
             try
             {
                 token.ThrowIfCancellationRequested();
@@ -103,17 +103,14 @@ namespace PixelBackup
         }
 
         private static PlanSession Prepare(
-            ScanResult scan, bool skipCopies, CancellationToken token, IProgress<string> progress,
+            ScanResult scan, CancellationToken token, IProgress<string> progress,
             string localAppData)
         {
             token.ThrowIfCancellationRequested();
             if (scan == null)
                 throw new ArgumentNullException("scan");
-            string folder = Path.GetFullPath(scan.Folder);
+            string folder = MediaScanner.LocalPath(scan.Folder);
             EnsureDirectoryChain(folder);
-            var contentsDrive = new DriveInfo(Path.GetPathRoot(folder));
-            if (contentsDrive.DriveType != DriveType.Fixed && contentsDrive.DriveType != DriveType.Removable)
-                throw new IOException("Select a folder on an attached local drive.");
 
             if (String.IsNullOrEmpty(localAppData))
                 throw new IOException("Windows did not provide a local application data directory.");
@@ -132,8 +129,6 @@ namespace PixelBackup
             foreach (MediaEntry entry in scan.Items)
             {
                 token.ThrowIfCancellationRequested();
-                if (skipCopies && (entry.Decision == "Folder copy" || entry.Decision == "Known copy"))
-                    continue;
                 ValidateEntryPath(folder, entry);
                 if (!paths.Add(entry.RelativePath))
                     throw new IOException("The scan contains the same Windows path more than once. Scan again.");
@@ -192,9 +187,9 @@ namespace PixelBackup
 
         private static void ValidateEntryPath(string root, MediaEntry entry)
         {
-            string relative = entry.RelativePath;
-            if (String.IsNullOrEmpty(relative))
+            if (entry == null || String.IsNullOrEmpty(entry.RelativePath))
                 throw new IOException("The scan contains an empty file path. Scan again.");
+            string relative = entry.RelativePath;
             foreach (string component in relative.Split('/'))
             {
                 if (component.Length == 0 || component == "." || component == ".." ||
@@ -244,23 +239,13 @@ namespace PixelBackup
         private void WritePlan(CancellationToken token, IProgress<string> progress)
         {
             string listPath = Path.Combine(planDirectory, "files.txt");
-            var reportInterval = Stopwatch.StartNew();
-            var buffer = new byte[128 * 1024];
             using (var output = new FileStream(listPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             using (var digest = SHA256.Create())
             {
                 int totalBytes = 0;
-                for (int index = 0; index < Published.Count; index++)
+                foreach (MediaEntry entry in Published)
                 {
                     token.ThrowIfCancellationRequested();
-                    if (progress != null && (index == 0 || reportInterval.ElapsedMilliseconds >= 400))
-                    {
-                        progress.Report(String.Format(CultureInfo.CurrentCulture,
-                            "Checking file {0:N0} of {1:N0}.", index + 1, Published.Count));
-                        reportInterval.Restart();
-                    }
-                    MediaEntry entry = Published[index];
-                    VerifyOriginal(entry, buffer, token);
                     byte[] line = Utf8.GetBytes(entry.RelativePath + "\n");
                     if (line.Length > MaximumPlanBytes - totalBytes)
                         throw new IOException("The folder list exceeds the 32 MiB manifest limit.");
@@ -272,42 +257,23 @@ namespace PixelBackup
                 File.WriteAllText(Path.Combine(planDirectory, "files.sha256"),
                     LowerHex(digest.Hash) + "\n", Utf8);
             }
-            // Originals already hashed can still have changed during a large scan.
-            foreach (MediaEntry entry in Published)
+            // Reopen each source and check the scan's metadata immediately
+            // before handing the finished manifest to the sharing broker.
+            var reportInterval = Stopwatch.StartNew();
+            for (int index = 0; index < Published.Count; index++)
             {
                 token.ThrowIfCancellationRequested();
-                if (!MediaScanner.IsCurrent(entry))
-                    throw Changed(entry);
-            }
-        }
-
-
-        private static void VerifyOriginal(MediaEntry entry, byte[] buffer, CancellationToken token)
-        {
-            if (!MediaScanner.IsCurrent(entry))
-                throw Changed(entry);
-            using (var input = new FileStream(entry.FullPath, FileMode.Open, FileAccess.Read,
-                       FileShare.Read, buffer.Length, FileOptions.SequentialScan))
-            using (var digest = SHA256.Create())
-            {
-                if (input.Length != entry.Bytes)
-                    throw Changed(entry);
-                int count;
-                while ((count = input.Read(buffer, 0, buffer.Length)) != 0)
+                if (progress != null && (index == 0 || reportInterval.ElapsedMilliseconds >= 400))
                 {
-                    token.ThrowIfCancellationRequested();
-                    digest.TransformBlock(buffer, 0, count, buffer, 0);
+                    progress.Report(String.Format(CultureInfo.CurrentCulture,
+                        "Checking file {0:N0} of {1:N0}.", index + 1, Published.Count));
+                    reportInterval.Restart();
                 }
-                digest.TransformFinalBlock(EndOfHash, 0, 0);
-                if (!String.Equals(LowerHex(digest.Hash), entry.Sha256, StringComparison.Ordinal) ||
-                    !MediaScanner.IsCurrent(entry))
-                    throw Changed(entry);
+                MediaEntry entry = Published[index];
+                if (!MediaScanner.IsCurrent(entry))
+                    throw new IOException("A source file changed or became unavailable. Scan the folder again.\n" + entry.RelativePath);
             }
-        }
-
-        private static IOException Changed(MediaEntry entry)
-        {
-            return new IOException("A source file changed after the scan. Scan the folder again.\n" + entry.RelativePath);
+            token.ThrowIfCancellationRequested();
         }
 
         private static string LowerHex(byte[] bytes)

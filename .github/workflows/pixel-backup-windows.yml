@@ -37,18 +37,14 @@ jobs:
               if (-not $window.Icon -or $window.Icon.PixelWidth -lt 64 -or -not $window.Content) {
                   throw 'The packaged window is missing its high-resolution icon or content.'
               }
-              foreach ($name in @('WelcomeView', 'ReviewView', 'ChooseFolder', 'ChangeFolder', 'PairPhone', 'GetUsbTools')) {
+              foreach ($name in @('ChooseFolder', 'FolderDropSurface', 'FolderPath', 'FileTable', 'FilesExpander',
+                      'ShareButton', 'SetupExpander', 'PairPhone', 'GetUsbTools', 'StatusText', 'StatusDetail')) {
                   if (-not $window.FindName($name)) { throw "The packaged window is missing the $name control." }
-              }
-              $art = $window.FindName('WelcomeArt').Source
-              if (-not $art -or -not $art.IsFrozen -or $art.PixelWidth -le 0) { throw 'The packaged welcome photo did not load.' }
-              if ($window.FindName('WelcomeView').Visibility -ne 'Visible' -or $window.FindName('ReviewView').Visibility -ne 'Collapsed') {
-                  throw 'The packaged window did not open on the welcome screen.'
               }
           } finally { $window.Close() }
 
-      - name: Test duplicate review and Takeout imports
-        run: .\tests\Test-DuplicateReview.ps1
+      - name: Test folder selection, sharing and shutdown
+        run: .\tests\Test-FolderSharing.ps1
 
       - name: Test offline Android tool setup
         run: .\tests\Test-AndroidTools.ps1

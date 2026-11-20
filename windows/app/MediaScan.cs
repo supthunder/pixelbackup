@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Security;
-using System.Security.Cryptography;
 using System.Threading;
 
 namespace PixelBackup
@@ -18,22 +17,20 @@ namespace PixelBackup
         public long Bytes { get; set; }
         public string SizeText
         {
-            get
-            {
-                double size = Bytes;
-                int unit = 0;
-                while (size >= 1024 && unit < SizeUnits.Length - 1)
-                {
-                    size /= 1024;
-                    unit++;
-                }
-                return size.ToString("0.#", CultureInfo.CurrentCulture) + " " + SizeUnits[unit];
-            }
+            get { return FormatSize(Bytes); }
         }
         public long LastWriteUtcTicks { get; set; }
-        public string Sha256 { get; set; }
-        public string Decision { get; set; }
-        public string Match { get; set; }
+
+        public static string FormatSize(decimal bytes)
+        {
+            int unit = 0;
+            while (bytes >= 1024 && unit < SizeUnits.Length - 1)
+            {
+                bytes /= 1024;
+                unit++;
+            }
+            return bytes.ToString("0.#", CultureInfo.CurrentCulture) + " " + SizeUnits[unit];
+        }
     }
 
     public sealed class ScanResult
@@ -68,12 +65,10 @@ namespace PixelBackup
             (".mpg .mpeg .mod .mmv .tod .wmv .asf .avi .divx .mov .m4v .3gp .3gpp " +
              ".3g2 .3gpp2 .mp4 .m2t .m2ts .mts .mkv").Split(' '), StringComparer.OrdinalIgnoreCase);
         private static readonly char[] InvalidNameChars = Path.GetInvalidFileNameChars();
-        private static readonly byte[] Empty = new byte[0];
         private const long PhotoLimit = 200L * 1024 * 1024;
         private const long VideoLimit = 10L * 1024 * 1024 * 1024;
 
-        // This predicate also accepts names from a Takeout ZIP. Camera models,
-        // pixel dimensions and codecs are ultimately checked by Google Photos.
+        // Google Photos checks the camera model, pixel dimensions and codec.
         public static bool IsMediaFile(string path)
         {
             if (string.IsNullOrEmpty(path)) return false;
@@ -84,8 +79,7 @@ namespace PixelBackup
             return ImageExtensions.Contains(ext) || VideoExtensions.Contains(ext);
         }
 
-        public static ScanResult Scan(string folder, IDictionary<string, string> known,
-            CancellationToken token, IProgress<string> progress)
+        public static ScanResult Scan(string folder, CancellationToken token, IProgress<string> progress)
         {
             token.ThrowIfCancellationRequested();
             string root = LocalPath(folder);
@@ -95,7 +89,6 @@ namespace PixelBackup
             var pending = new Stack<string>();
             pending.Push(root);
             string prefix = root.TrimEnd('\\') + "\\";
-            var buffer = new byte[256 * 1024];
             var clock = Stopwatch.StartNew();
             if (progress != null) progress.Report("Scanning " + root);
 
@@ -106,7 +99,7 @@ namespace PixelBackup
                 string relative = path == root ? "." : path.Substring(prefix.Length).Replace('\\', '/');
                 try
                 {
-                    CheckPath(path);
+                    CheckPath(path, prefix.Length);
                     if (HasNoMedia(path))
                     {
                         result.Skip(relative, "Skipped this folder and its contents because it contains .nomedia.");
@@ -130,7 +123,7 @@ namespace PixelBackup
                                 result.Skip(child, "Skipped a reparse point or cloud placeholder.");
                                 continue;
                             }
-                            if (name[0] == '.')
+                            if (name[0] == '.' || (attributes & FileAttributes.Hidden) != 0)
                             {
                                 result.SkippedCount++;
                                 continue;
@@ -145,7 +138,13 @@ namespace PixelBackup
                                 result.SkippedCount++;
                                 continue;
                             }
-                            result.Items.Add(HashFile(file, child, buffer, token, progress, clock));
+                            result.Items.Add(InspectFile(file, child));
+                            if (progress != null && clock.ElapsedMilliseconds >= 250)
+                            {
+                                progress.Report(String.Format(CultureInfo.CurrentCulture,
+                                    "Found {0:N0} media files.", result.Items.Count));
+                                clock.Restart();
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -163,74 +162,32 @@ namespace PixelBackup
 
             token.ThrowIfCancellationRequested();
             result.Items.Sort((a, b) => StringComparer.Ordinal.Compare(a.RelativePath, b.RelativePath));
-            var first = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (MediaEntry entry in result.Items)
-            {
-                token.ThrowIfCancellationRequested();
-                string match;
-                if (known != null && known.TryGetValue(entry.Sha256, out match))
-                {
-                    entry.Decision = "Known copy";
-                    entry.Match = string.IsNullOrEmpty(match) ? "Known library" : match;
-                }
-                else if (first.TryGetValue(entry.Sha256, out match))
-                {
-                    entry.Decision = "Folder copy";
-                    entry.Match = match;
-                }
-                else
-                {
-                    first.Add(entry.Sha256, entry.RelativePath);
-                    entry.Decision = "Ready";
-                    entry.Match = "";
-                }
-            }
             token.ThrowIfCancellationRequested();
             if (progress != null) progress.Report("Scanned " + result.Items.Count + " media files.");
             return result;
         }
 
-        private static MediaEntry HashFile(string path, string relative, byte[] buffer,
-            CancellationToken token, IProgress<string> progress, Stopwatch clock)
+        private static MediaEntry InspectFile(string path, string relative)
         {
-            CheckPath(path);
-            using (var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
-                                              64 * 1024, FileOptions.SequentialScan))
-            using (var hash = SHA256.Create())
+            int relativeStart = path.Length - relative.Length;
+            CheckPath(path, relativeStart);
+            // Opening for read also checks access and excludes concurrent writers
+            // while taking the metadata snapshot. The media contents stay on disk.
+            using (var file = File.OpenRead(path))
             {
+                CheckPath(path, relativeStart);
                 long length = file.Length;
                 if (length == 0) throw new IOException("The media file is empty.");
                 if (ImageExtensions.Contains(Path.GetExtension(path)) ? length > PhotoLimit : length > VideoLimit)
                     throw new IOException("The file exceeds the Google Photos size limit for this media type.");
-                long stamp = File.GetLastWriteTimeUtc(path).Ticks;
-                long total = 0;
-                int read;
-                while ((read = file.Read(buffer, 0, buffer.Length)) != 0)
-                {
-                    token.ThrowIfCancellationRequested();
-                    hash.TransformBlock(buffer, 0, read, buffer, 0);
-                    total += read;
-                    if (progress != null && clock.ElapsedMilliseconds >= 250)
-                    {
-                        progress.Report(string.Format(CultureInfo.CurrentCulture,
-                            "Reading {0} ({1:P0})", relative, (double)total / length));
-                        clock.Restart();
-                    }
-                }
-                token.ThrowIfCancellationRequested();
-                hash.TransformFinalBlock(Empty, 0, 0);
-                CheckPath(path);
-                if (total != length || File.GetLastWriteTimeUtc(path).Ticks != stamp)
-                    throw new IOException("The file changed while it was being read. Scan it again.");
                 return new MediaEntry
                 {
-                    FullPath = path, RelativePath = relative, Bytes = total, LastWriteUtcTicks = stamp,
-                    Sha256 = BitConverter.ToString(hash.Hash).Replace("-", "").ToLowerInvariant()
+                    FullPath = path, RelativePath = relative, Bytes = length,
+                    LastWriteUtcTicks = File.GetLastWriteTimeUtc(path).Ticks
                 };
             }
         }
 
-        // A quick metadata check. The publisher rehashes before opening a session.
         public static bool IsCurrent(MediaEntry entry)
         {
             if (entry == null || string.IsNullOrEmpty(entry.RelativePath)) return false;
@@ -239,14 +196,13 @@ namespace PixelBackup
                 string path = LocalPath(entry.FullPath);
                 string suffix = "\\" + entry.RelativePath.Replace('/', '\\');
                 if (!path.EndsWith(suffix, StringComparison.Ordinal) || !IsMediaFile(path)) return false;
-                CheckPath(path);
-                var file = new FileInfo(path);
-                if (!file.Exists || file.Length != entry.Bytes || file.LastWriteTimeUtc.Ticks != entry.LastWriteUtcTicks)
+                var current = InspectFile(path, entry.RelativePath);
+                if (current.Bytes != entry.Bytes || current.LastWriteUtcTicks != entry.LastWriteUtcTicks)
                     return false;
                 // Check .nomedia up to the root originally selected. The phone
                 // never sees Windows directories above that selection.
                 int rootLength = path.Length - suffix.Length;
-                for (var parent = file.Directory; parent != null && parent.FullName.Length >= rootLength; parent = parent.Parent)
+                for (var parent = Directory.GetParent(path); parent != null && parent.FullName.Length >= rootLength; parent = parent.Parent)
                     if (HasNoMedia(parent.FullName)) return false;
                 return true;
             }
@@ -287,7 +243,7 @@ namespace PixelBackup
                 device.StartsWith("COM", StringComparison.Ordinal)) && "123456789¹²³".IndexOf(device[3]) >= 0);
         }
 
-        private static FileAttributes CheckPath(string path)
+        private static FileAttributes CheckPath(string path, int relativeStart = Int32.MaxValue)
         {
             // Check ancestors from the drive down before asking Windows for
             // attributes of anything underneath a possible junction.
@@ -298,6 +254,8 @@ namespace PixelBackup
                 FileAttributes attributes = File.GetAttributes(current);
                 if ((attributes & FileAttributes.ReparsePoint) != 0)
                     throw new IOException("A reparse point is outside the supported source tree: " + current);
+                if (end > relativeStart && ((attributes & FileAttributes.Hidden) != 0 || Path.GetFileName(current)[0] == '.'))
+                    throw new IOException("A hidden file or folder was skipped: " + current);
                 if (end == path.Length) return attributes;
                 int separator = path.IndexOf('\\', end + 1);
                 end = separator < 0 ? path.Length : separator;

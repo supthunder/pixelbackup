@@ -16,68 +16,6 @@ using System.Windows.Media;
 
 namespace PixelBackup
 {
-    internal sealed class LibraryProfile
-    {
-        public string Id, Name, DirectoryPath;
-        public override string ToString() { return Name; }
-    }
-
-    internal sealed class Profiles
-    {
-        private readonly string root;
-        internal readonly List<LibraryProfile> All = new List<LibraryProfile>();
-        internal LibraryProfile Active { get; private set; }
-
-        internal Profiles(string state)
-        {
-            root = Path.Combine(state, "profiles");
-            Directory.CreateDirectory(root);
-            foreach (string path in Directory.GetDirectories(root))
-            {
-                Guid id;
-                if (!Guid.TryParseExact(Path.GetFileName(path), "N", out id) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) continue;
-                string label = Path.Combine(path, "name.txt");
-                if (!File.Exists(label)) continue;
-                All.Add(new LibraryProfile { Id = id.ToString("N"), Name = File.ReadAllText(label, Encoding.UTF8).Trim(), DirectoryPath = path });
-            }
-            All.Sort((a, b) => StringComparer.CurrentCultureIgnoreCase.Compare(a.Name, b.Name));
-            if (All.Count == 0) Create("My library");
-            string current = Path.Combine(root, "current");
-            string saved = File.Exists(current) ? File.ReadAllText(current).Trim() : "";
-            Active = All.FirstOrDefault(x => x.Id == saved) ?? All[0];
-        }
-
-        internal LibraryProfile Create(string name)
-        {
-            name = (name ?? "").Trim();
-            if (name.Length == 0 || name.Length > 60 || name.Any(char.IsControl))
-                throw new ArgumentException("Choose a library name between 1 and 60 characters.");
-            if (All.Any(x => string.Equals(x.Name, name, StringComparison.CurrentCultureIgnoreCase)))
-                throw new ArgumentException("A library with that name already exists.");
-            string id = Guid.NewGuid().ToString("N");
-            string directory = Path.Combine(root, id);
-            Directory.CreateDirectory(directory);
-            var profile = new LibraryProfile { Id = id, Name = name, DirectoryPath = directory };
-            File.WriteAllText(Path.Combine(directory, "name.txt"), name, new UTF8Encoding(false));
-            All.Add(profile);
-            return profile;
-        }
-
-        internal void Select(LibraryProfile selected)
-        {
-            string file = Path.Combine(root, "current");
-            string temp = Path.Combine(root, Guid.NewGuid().ToString("N") + ".tmp");
-            try
-            {
-                File.WriteAllText(temp, selected.Id, Encoding.ASCII);
-                if (File.Exists(file)) File.Replace(temp, file, null);
-                else File.Move(temp, file);
-                Active = selected;
-            }
-            finally { if (File.Exists(temp)) File.Delete(temp); }
-        }
-    }
-
     internal static class DesktopPlatform
     {
         internal static string PowerShell
@@ -342,30 +280,5 @@ if ($user.PasswordExpires) { $user.PasswordExpires.ToString('yyyy-MM-dd') } else
             return result;
         }
 
-        internal static string Prompt(Window owner, string title, string caption, string value, string[] choices)
-        {
-            var dialog = new Window
-            {
-                Title = title, Owner = owner, Icon = owner.Icon, SizeToContent = SizeToContent.Height, Width = 460, ResizeMode = ResizeMode.NoResize,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner, ShowInTaskbar = false,
-                Background = Brushes.White, FontFamily = owner.FontFamily, FontSize = 14
-            };
-            var panel = new StackPanel { Margin = new Thickness(24) };
-            panel.Children.Add(new TextBlock { Text = caption, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 14) });
-            var input = new TextBox { Text = value ?? "", MaxLength = 60, Padding = new Thickness(7), MinHeight = 32 };
-            var list = new ComboBox { ItemsSource = choices, SelectedIndex = 0, MinHeight = 32 };
-            System.Windows.Automation.AutomationProperties.SetName(choices == null ? (DependencyObject)input : list, caption);
-            panel.Children.Add(choices == null ? (UIElement)input : list);
-            var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 18, 0, 0) };
-            var cancel = new Button { Content = "Cancel", IsCancel = true, Padding = new Thickness(12, 5, 12, 5) };
-            var ok = new Button { Content = "Continue", IsDefault = true, Padding = new Thickness(12, 5, 12, 5), Margin = new Thickness(8, 0, 0, 0) };
-            cancel.Style = owner.TryFindResource("ButtonBase") as Style;
-            ok.Style = owner.TryFindResource("PrimaryButton") as Style;
-            ok.Click += delegate { dialog.DialogResult = true; };
-            buttons.Children.Add(cancel); buttons.Children.Add(ok); panel.Children.Add(buttons); dialog.Content = panel;
-            dialog.Loaded += delegate { if (choices == null) { input.Focus(); input.SelectAll(); } else list.Focus(); };
-            if (dialog.ShowDialog() != true) return null;
-            return choices == null ? input.Text : list.SelectedItem as string;
-        }
     }
 }

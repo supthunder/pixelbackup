@@ -5,7 +5,6 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Markup;
 using System.Windows.Media.Imaging;
 
@@ -31,16 +30,6 @@ namespace PixelBackup
                     largest.Freeze();
                     window.Icon = largest;
                 }
-                Image welcomeArt = window.FindName("WelcomeArt") as Image;
-                if (welcomeArt == null) throw new InvalidDataException("The welcome screen is missing its photo control.");
-                using (Stream photo = assembly.GetManifestResourceStream("PixelBackup.Welcome.jpg"))
-                {
-                    if (photo == null) throw new InvalidDataException("The welcome photo is missing.");
-                    var decoder = new JpegBitmapDecoder(photo, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-                    BitmapFrame frame = decoder.Frames[0];
-                    frame.Freeze();
-                    welcomeArt.Source = frame;
-                }
                 return window;
             }
         }
@@ -59,8 +48,7 @@ namespace PixelBackup
                 {
                     Window window = LoadWindow();
                     string install = AppDomain.CurrentDomain.BaseDirectory;
-                    string state = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PixelBackup", "Desktop");
-                    var controller = new DesktopApp(window, Path.Combine(install, "windows"), state);
+                    var controller = new DesktopApp(window, Path.Combine(install, "windows"));
                     var activate = ThreadPool.RegisterWaitForSingleObject(signal, delegate
                     {
                         window.Dispatcher.BeginInvoke(new Action(delegate
